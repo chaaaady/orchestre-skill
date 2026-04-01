@@ -180,6 +180,32 @@ memory.set("feature_{id}_validation", "pass|fail")
 
 All files listed in the feature prompt's FILES TO CREATE section, implemented in the isolated worktree.
 
+### Test Stub Generation
+After implementing a feature, generate a test stub file:
+- Path: `__tests__/{feature_id}.test.ts`
+- Structure: `describe('{feature_name}')` with `it()` blocks for each acceptance criterion
+- Each `it()` contains a `// TODO: implement` comment
+- Import the feature's main exports
+- Example:
+```typescript
+import { describe, it, expect } from 'vitest';
+
+describe('F01 Authentication', () => {
+  it('should allow user to sign up with email/password', () => {
+    // TODO: implement — test signup flow
+  });
+
+  it('should allow user to sign in with Google OAuth', () => {
+    // TODO: implement — test OAuth redirect
+  });
+
+  it('should redirect protected routes to /login', () => {
+    // TODO: implement — test route protection
+  });
+});
+```
+- Wave 4 auditor checks that test files exist for each feature
+
 ## RULES
 
 1. **NEVER** modify files outside the impacted_files list from the plan

@@ -3,13 +3,13 @@
     "PreToolUse": [
       {
         "matcher": "Write|Edit",
-        "command": "bash hooks/pre-write-guard.sh \"$TOOL_INPUT\""
+        "command": "node hooks/orchestre-guard.mjs --mode pre-write"
       }
     ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit",
-        "command": "bash hooks/post-write-check.sh \"$TOOL_INPUT\""
+        "command": "node hooks/orchestre-guard.mjs --mode post-write"
       }
     ]
   }

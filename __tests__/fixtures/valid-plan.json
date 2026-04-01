@@ -1,0 +1,44 @@
+{
+  "version": "2.0.0",
+  "project_id": "test-project",
+  "intent_hash": "sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
+  "tasks": [
+    {
+      "task_id": "T000",
+      "feature_id": "F00",
+      "title": "Project Scaffold",
+      "description": "Initialize project",
+      "order": 0,
+      "files": [{ "path": "package.json", "action": "create" }],
+      "parallel_group": null,
+      "worktree_required": false,
+      "hooks_config": ["pre-write-guard"],
+      "lsp_checks": ["type-errors"],
+      "security_review_required": false,
+      "estimated_cost_usd": 0.05,
+      "real_cost_usd": null
+    }
+  ],
+  "prompts": [
+    {
+      "feature_id": "F01",
+      "system_prompt": "You are building auth.",
+      "user_prompt": "Implement authentication."
+    }
+  ],
+  "council_checks": {
+    "task_count_valid": true,
+    "dependency_graph_acyclic": true,
+    "file_conflicts_none": true,
+    "security_tasks_flagged": true,
+    "worktree_conflict_check": true,
+    "hook_compatibility_check": true,
+    "all_passed": true
+  },
+  "cost_estimate": {
+    "total_usd": 0.05,
+    "per_feature": { "F00": 0.05 },
+    "profile": "budget"
+  },
+  "generated_at": "2026-04-01T00:00:00.000Z"
+}

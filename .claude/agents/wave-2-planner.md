@@ -168,6 +168,14 @@ Run 9 validation checks:
 | C8 | Singleton check | Stripe/Resend/Sentry → singleton in T00 | WARNING |
 | C9 | Worktree conflicts | Parallel group tasks don't share files | ERROR |
 
+### Strengthened File Conflict Prevention (V2)
+The `file_conflicts_none` council check now performs:
+1. Cross-check ALL `files` arrays across tasks in the same parallel_group
+2. If ANY file path appears in 2+ tasks within the same group → FATAL
+3. Shared files (e.g., `app/layout.tsx`) must be assigned to exactly 1 task as `modify`
+4. Other tasks referencing the same file must declare it as a dependency, not a write
+5. Log the full conflict matrix in council_checks.details
+
 ### Step 7: Model Recommendations
 
 Based on profile (recalled from memory or wave-0):

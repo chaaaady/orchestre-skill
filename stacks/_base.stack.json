@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "id": "_base",
+  "name": "Base (Universal TypeScript)",
+  "extends": null,
+  "rules": {
+    "R1": {
+      "id": "R1",
+      "description": "Business logic in lib/ only — never in app/, pages/, or components/",
+      "scope": ["app/", "pages/", "components/"],
+      "enabled": true,
+      "universal": true
+    },
+    "R2": {
+      "id": "R2",
+      "description": "Components = pure UI — data via props, no direct data fetching",
+      "scope": ["components/"],
+      "enabled": true,
+      "universal": true
+    },
+    "R3": {
+      "id": "R3",
+      "description": "Types inferred from Zod — z.infer<typeof schema>, never manual duplicates",
+      "scope": ["**/*.ts", "**/*.tsx"],
+      "enabled": true,
+      "universal": true
+    },
+    "R4": {
+      "id": "R4",
+      "description": "Errors as Result<T> — never throw in lib/",
+      "scope": ["lib/"],
+      "enabled": true,
+      "universal": true
+    },
+    "R5": {
+      "id": "R5",
+      "description": "1 feature = 1 isolated folder — no cross-feature imports",
+      "scope": ["components/", "features/"],
+      "enabled": true,
+      "universal": true
+    },
+    "R8": {
+      "id": "R8",
+      "description": "No magic strings — use const enums or as const objects",
+      "scope": ["**/*.ts", "**/*.tsx"],
+      "enabled": true,
+      "universal": true
+    }
+  },
+  "coding_standards": {
+    "ban_any": true,
+    "import_alias": "@/",
+    "safe_parse": true,
+    "explicit_return_types_in_lib": true,
+    "no_relative_deep_imports": true
+  },
+  "security": {
+    "secret_detection": true,
+    "env_validation_required": true,
+    "no_console_log_sensitive": true,
+    "no_next_public_secrets": true
+  },
+  "hooks": {
+    "checkers": {
+      "secrets": true,
+      "typescript-ast": true,
+      "import-paths": true
+    }
+  },
+  "singletons": {},
+  "knowledge_base": [
+    "error-handling",
+    "zod-server"
+  ],
+  "defaults": {
+    "tech_stack": {}
+  }
+}

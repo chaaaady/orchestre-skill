@@ -1,0 +1,82 @@
+{
+  "id": "nextjs-supabase",
+  "name": "Next.js + Supabase + Tailwind + Stripe",
+  "extends": "_base",
+  "rules": {
+    "R6": {
+      "id": "R6",
+      "description": "Server Components by default — 'use client' only when needed",
+      "scope": ["app/", "components/"],
+      "enabled": true,
+      "universal": false
+    },
+    "R7": {
+      "id": "R7",
+      "description": "Mutations via Server Actions only — never fetch('/api/...', { method: 'POST' })",
+      "scope": ["app/", "components/"],
+      "enabled": true,
+      "universal": false
+    }
+  },
+  "coding_standards": {
+    "server_actions_in_actions_dir": true,
+    "use_proxy_not_middleware": true
+  },
+  "security": {
+    "rls_on_all_user_tables": true,
+    "get_user_not_get_session": true,
+    "webhook_signature_verification": true,
+    "zod_validation_server_side": true
+  },
+  "hooks": {
+    "checkers": {
+      "tailwind-tokens": true
+    }
+  },
+  "design_system": {
+    "semantic_tokens_only": true,
+    "icons": "lucide-react",
+    "no_emoji_icons": true,
+    "no_hardcoded_tailwind_colors": true
+  },
+  "singletons": {
+    "supabase-server": { "file": "lib/supabase/server.ts", "pattern": "createServerClient()" },
+    "supabase-client": { "file": "lib/supabase/client.ts", "pattern": "createBrowserClient()" },
+    "stripe": { "file": "lib/stripe.ts", "pattern": "new Stripe()" },
+    "resend": { "file": "lib/email/client.ts", "pattern": "new Resend()" },
+    "ai": { "file": "lib/ai/client.ts", "pattern": "new Anthropic()" }
+  },
+  "folder_structure": {
+    "app/": "Routing ONLY — pages, layouts, route handlers",
+    "components/": "UI ONLY — props, no fetch",
+    "lib/": "BUSINESS LOGIC — queries, mutations, schemas, errors",
+    "actions/": "Server Actions ('use server')"
+  },
+  "knowledge_base": [
+    "stripe-billing",
+    "supabase-patterns",
+    "auth-hardening",
+    "rls-patterns",
+    "rhf-zod",
+    "nextjs-server-actions",
+    "rate-limiting",
+    "frontend-patterns",
+    "recharts",
+    "shadcn-advanced",
+    "resend",
+    "sentry",
+    "tanstack-query"
+  ],
+  "defaults": {
+    "tech_stack": {
+      "framework": "Next.js 15 (App Router)",
+      "language": "TypeScript 5.x",
+      "database": "Supabase (PostgreSQL)",
+      "auth": "Supabase Auth",
+      "hosting": "Vercel",
+      "payment": "Stripe",
+      "styling": "Tailwind CSS 4 + shadcn/ui",
+      "state": "React Server Components + Zustand"
+    }
+  }
+}

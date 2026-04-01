@@ -1,11 +1,18 @@
 {
   "name": "orchestre-skill",
-  "version": "1.0.0",
-  "description": "Orchestre Quality Layer for Claude Code — production-ready code from every session",
-  "bin": {
-    "orchestre-install": "./bin/install.js"
+  "version": "2.0.0",
+  "description": "Orchestre V2 — Quality Layer for Claude Code with AST hooks, contract validation, and stack adaptability",
+  "type": "module",
+  "scripts": {
+    "test": "node --test __tests__/**/*.test.mjs",
+    "validate": "node contracts/validate.mjs",
+    "install-project": "node bin/install.mjs",
+    "install-global": "node bin/install.mjs --global"
   },
-  "keywords": ["claude-code", "orchestre", "quality", "architecture", "nextjs", "supabase"],
+  "bin": {
+    "orchestre-install": "./bin/install.mjs"
+  },
+  "keywords": ["claude-code", "orchestre", "quality", "architecture", "nextjs", "supabase", "ast-hooks", "contract-validation"],
   "author": "chaaaady",
   "license": "MIT",
   "repository": {

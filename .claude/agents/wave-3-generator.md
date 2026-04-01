@@ -323,6 +323,17 @@ Persist to memory: generated_files, validation_results, doctor_score, output_sco
 
 Write `.orchestre/WAVE_3_DONE`.
 
+### Checkpoint Protocol
+After each feature-worker completes:
+1. Update `orchestre.lock` with:
+   - `feature_status[F_XX] = "done"` or `"error"`
+   - `checkpoints.wave_3.features_done` += feature_id (if success)
+   - `checkpoints.wave_3.features_failed` += feature_id (if error, retry once)
+   - `checkpoints.wave_3.features_pending` -= feature_id
+   - `checkpoints.wave_3.last_checkpoint_at` = now
+2. If feature fails and retries exhausted: mark `skipped`, continue with next feature
+3. Before starting each feature: check remaining budget. If < estimated cost, checkpoint and ask user.
+
 ## RULES
 
 1. **ALWAYS** use AskUserQuestion for ENV gating — never just print text

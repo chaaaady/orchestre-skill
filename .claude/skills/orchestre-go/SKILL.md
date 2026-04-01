@@ -155,3 +155,30 @@ Prochaines étapes :
 5. Si une wave échoue, afficher l'erreur et proposer de re-run
 6. Respecter le profil choisi pour les modèles et l'effort
 7. Maximum 15 features, même pour les projets heavy
+
+## Resume Mode
+
+If the user passes `--resume` or says "resume", check for existing `.orchestre/orchestre.lock`:
+
+1. Read `orchestre.lock` and find `waves_completed` array
+2. Find the last completed wave marker
+3. If `checkpoints` exist for the current wave:
+   - Skip features in `features_done`
+   - Retry features in `features_failed` (max 1 retry)
+   - Resume from first feature in `features_pending`
+4. If budget is exhausted mid-wave:
+   - Save checkpoint immediately
+   - Use AskUserQuestion: "Budget exhausted. Options: (1) Add $X more budget, (2) Skip remaining features, (3) Abort"
+   - If skip: mark remaining as `skipped` in orchestre.lock, proceed to Wave 4
+5. Report status: "Resuming from Wave {N}, {X} features done, {Y} pending"
+
+## Schema Validation
+
+Before writing any `WAVE_X_DONE` marker, validate the wave output:
+- Wave 0: `node contracts/validate.mjs BriefLint .orchestre/brief.json`
+- Wave 1: `node contracts/validate.mjs IntentV2 .orchestre/intent.json`
+- Wave 2: `node contracts/validate.mjs PlanV2 .orchestre/plan.json`
+- Wave 3: `node contracts/validate.mjs StateV2 .orchestre/orchestre.lock`
+- Wave 4: (no validation needed — audit is the validation)
+
+If validation fails, fix the output and retry. Do NOT write `WAVE_X_DONE` until validation passes.

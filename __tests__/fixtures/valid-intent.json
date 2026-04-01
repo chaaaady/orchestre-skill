@@ -1,0 +1,23 @@
+{
+  "version": "2.0.0",
+  "project_id": "test-project",
+  "project_name": "Test Project",
+  "project_weight": "S",
+  "features": [
+    {
+      "feature_id": "F01",
+      "name": "Auth",
+      "description": "Basic authentication",
+      "priority": "critical",
+      "category": "auth",
+      "files_hint": ["lib/auth/client.ts"]
+    }
+  ],
+  "parallel_groups": [],
+  "agent_config": {},
+  "memory_keys": ["orchestre:features"],
+  "design_system_source": "generated",
+  "research_urls": [],
+  "generated_at": "2026-04-01T00:00:00.000Z",
+  "brief_hash": "sha256:a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+}

@@ -234,6 +234,23 @@ mineurs:{count}
 
 Persist to memory: audit_score, grade, top_issues, remediation_plan.
 
+### Additional V2 Quality Checks
+
+#### Test File Existence
+For each feature in intent.json, verify `__tests__/{feature_id}.test.ts` exists.
+- If missing: -3 points per feature, add to recommendations
+
+#### CLAUDE.md Quality
+Verify the generated project-level CLAUDE.md:
+- Must be under 200 lines
+- Must not contain generic boilerplate (e.g., "This is a Next.js project")
+- Must reference at least 3 actual file paths from the project
+- If violations: -5 points, add to recommendations
+
+#### Schema Validation
+Run `node contracts/validate.mjs` against all .orchestre/*.json files.
+- If any fail: -10 points (FATAL), add to violations
+
 ## RULES
 
 1. **NEVER** modify project code — audit is read-only

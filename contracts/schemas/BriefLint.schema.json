@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BriefLint",
+  "type": "object",
+  "required": ["project_name", "lint_results", "project_weight"],
+  "properties": {
+    "project_name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "mode": { "type": ["string", "null"], "enum": ["greenfield", "brownfield", null] },
+    "target_users": { "type": ["string", "null"] },
+    "features": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "raw_text": { "type": "string" }
+        }
+      }
+    },
+    "lint_results": {
+      "type": "object",
+      "required": ["fatal_count", "warning_count", "info_count", "checks"],
+      "properties": {
+        "fatal_count": { "type": "integer", "minimum": 0 },
+        "warning_count": { "type": "integer", "minimum": 0 },
+        "info_count": { "type": "integer", "minimum": 0 },
+        "checks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "severity", "passed", "message"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^L[0-9]{2}$" },
+              "severity": { "type": "string", "enum": ["FATAL", "WARNING", "INFO"] },
+              "passed": { "type": "boolean" },
+              "message": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "project_weight": { "type": "string", "enum": ["XS", "S", "M", "L", "XL"] },
+    "raw_hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+  }
+}

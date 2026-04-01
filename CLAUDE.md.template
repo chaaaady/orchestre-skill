@@ -1,0 +1,60 @@
+# Orchestre — Quality Layer (Global)
+
+> Active in EVERY Claude Code session, EVERY project.
+> Transforms every response into production-ready code.
+> Stack: {{STACK_NAME}}
+
+---
+
+## Architecture Rules (ALWAYS APPLY)
+
+{{RULES_SECTION}}
+
+---
+
+## Coding Standards
+
+- **Ban `any`** → `unknown` + narrowing
+- **Imports `{{IMPORT_ALIAS}}`** → never `../../`
+- **`safeParse()`** → never `parse()` for user inputs
+- **Explicit return types** on `lib/` functions
+
+{{SINGLETONS_SECTION}}
+
+{{DESIGN_SYSTEM_SECTION}}
+
+### Project Structure
+```
+{{FOLDER_STRUCTURE}}
+```
+
+---
+
+## Security
+
+{{SECURITY_SECTION}}
+
+---
+
+## Commands & Tools
+
+### Slash commands
+| Command | When to use |
+|---------|-------------|
+| `/orchestre-go "description"` | Generate a full project (brief → waves → code) |
+| `/orchestre-audit` | Audit existing code, score /100 |
+| `/orchestre-status` | Show pipeline progress |
+
+### Wave Agents
+| Agent | Role |
+|-------|------|
+| `wave-0-linter` | Validate PROJECT.md |
+| `wave-1-decomposer` | Decompose into features |
+| `wave-2-planner` | Plan atomic tasks + DAG |
+| `wave-3-generator` | Generate code (parallel worktrees) |
+| `wave-4-auditor` | Audit code, score /100 |
+| `feature-worker` | Implement 1 isolated feature |
+| `wave-design` | Generate design system |
+
+### Knowledge (read BEFORE coding)
+{{KNOWLEDGE_TABLE}}
