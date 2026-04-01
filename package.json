@@ -1,0 +1,15 @@
+{
+  "name": "orchestre-skill",
+  "version": "1.0.0",
+  "description": "Orchestre Quality Layer for Claude Code — production-ready code from every session",
+  "bin": {
+    "orchestre-install": "./bin/install.js"
+  },
+  "keywords": ["claude-code", "orchestre", "quality", "architecture", "nextjs", "supabase"],
+  "author": "chaaaady",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chaaaady/orchestre-skill"
+  }
+}

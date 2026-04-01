@@ -1,0 +1,9 @@
+.orchestre/
+.orchestre/sessions/
+.orchestre/cost-tracker.json
+node_modules/
+.env
+.env.local
+.DS_Store
+*.pyc
+__pycache__/
