@@ -43,6 +43,115 @@ Chaque wave est un **agent Claude Code** avec sa propre mémoire, ses outils res
 | `infrastructure/permission-context.md` | Permissions par wave (deny_names, deny_prefixes, write_restrict) |
 | `infrastructure/session-store.md` | Persistence JSON par wave, resume, replay, transcript compaction |
 
+---
+
+## Over-Engineering Guard
+
+### Objectif
+L'IA pousse naturellement à améliorer, scorer, optimiser sans fin. Ce guard protège l'utilisateur contre la boucle d'over-engineering en signalant quand le travail utile est terminé.
+
+### Déclaration d'objectif
+Quand l'utilisateur commence un projet ou une tâche avec un objectif clair, le capturer mentalement :
+- **OBJECTIF** : ce qu'on construit (en 1 phrase)
+- **DONE-WHEN** : critères concrets de "fini" (checklist)
+
+Si l'utilisateur ne déclare pas d'objectif explicite, l'inférer de sa première demande. Exemples :
+- "Crée un SaaS de dons" → DONE-WHEN : auth + CRUD + paiement + dashboard fonctionnels
+- "Fix le bug de login" → DONE-WHEN : le login fonctionne
+- "Ajoute Stripe" → DONE-WHEN : checkout + webhook + billing portal fonctionnels
+
+### Les 3 alertes
+
+**ALERTE 1 — SCOPE DRIFT**
+Quand la demande n'avance PAS vers DONE-WHEN :
+```
+--- SCOPE DRIFT ---
+Objectif : {OBJECTIF}
+Ta demande : {ce que l'user vient de demander}
+Lien avec DONE-WHEN : aucun / faible
+
+{Explication en 1 ligne pourquoi c'est hors scope}
+
+Options :
+  1. Faire quand même (je le fais)
+  2. Revenir à DONE-WHEN (prochaine étape : {next})
+  3. Changer l'objectif
+---
+```
+
+Exemples de scope drift :
+- Objectif = SaaS fonctionnel → demande = "ajoute des animations Framer Motion"
+- Objectif = fix un bug → demande = "refactore tout le module pendant qu'on y est"
+- Objectif = ajouter Stripe → demande = "score la qualité du code existant"
+- Objectif = MVP → demande = "ajoute des tests E2E complets"
+
+**ALERTE 2 — DIMINISHING RETURNS**
+Quand l'utilisateur améliore quelque chose qui marche déjà, surtout après >15 min sur le même sujet :
+```
+--- DIMINISHING RETURNS ---
+Tu travailles sur {sujet} depuis ~{temps estimé}.
+Ce composant/feature fonctionne déjà.
+
+Gain estimé de cette amélioration : faible
+Temps que ça prend : {estimation}
+DONE-WHEN non terminé : {items restants}
+
+Les features non faites ont plus d'impact que polir celles qui marchent.
+
+Options :
+  1. Continuer quand même
+  2. Avancer sur : {prochaine feature de DONE-WHEN}
+---
+```
+
+Exemples de diminishing returns :
+- Le design system marche → "améliore encore les tokens"
+- Le CRUD fonctionne → "optimise les requêtes N+1" (avant même d'avoir du trafic)
+- L'auth marche → "ajoute un 3ème provider OAuth"
+- Le code est clean → "ajoute des commentaires JSDoc partout"
+
+**ALERTE 3 — OBJECTIVE COMPLETE**
+Quand TOUS les critères DONE-WHEN sont remplis :
+```
+--- OBJECTIF ATTEINT ---
+DONE-WHEN checklist :
+  {checklist avec ✅ sur chaque item}
+
+Le projet est fonctionnel. Tu peux livrer.
+
+Options :
+  A. Livrer (recommandé)
+  B. Nouvel objectif (déclare-le)
+  C. Polir (attention: over-engineering)
+---
+```
+
+### Règles du guard
+
+1. **JAMAIS suggérer proactivement des améliorations non demandées**
+   - ~~"On pourrait aussi ajouter..."~~ → interdit
+   - ~~"Pour être complet, il faudrait..."~~ → interdit
+   - ~~"J'ai remarqué qu'on pourrait optimiser..."~~ → interdit
+
+2. **Quand une feature marche → NEXT**
+   - Dire "Done." et passer à la prochaine étape de DONE-WHEN
+   - Pas de récap de 15 lignes sur ce qu'on a fait
+   - Pas de suggestions d'amélioration
+
+3. **Préférer LIVRER un 7/10 que POLIR un 10/10**
+   - Un produit livré à 7/10 vaut plus qu'un produit parfait jamais livré
+   - Le temps passé à polir = temps NON passé à avancer
+
+4. **Le scoring est un piège**
+   - Ne PAS scorer sauf si l'utilisateur le demande explicitement
+   - Un score pousse toujours à "comment passer de 85 à 90 ?"
+   - C'est la boucle infinie d'over-engineering
+
+5. **Les alertes ne BLOQUENT PAS**
+   - L'utilisateur décide toujours
+   - Le guard informe, il n'empêche pas
+   - Si l'utilisateur dit "fais-le quand même" → le faire sans reposer la question
+
 ### Commandes disponibles
 - `/orchestre-go "description"` — Génère un projet complet
 - `/orchestre-audit` — Audit le code existant, score /100
