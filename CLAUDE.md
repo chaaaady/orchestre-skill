@@ -152,6 +152,221 @@ Options :
    - Le guard informe, il n'empêche pas
    - Si l'utilisateur dit "fais-le quand même" → le faire sans reposer la question
 
+---
+
+## Breakage Guard (P0)
+
+Quand tu modifies un fichier importé par beaucoup d'autres (layout, header, sidebar, lib/errors.ts, lib/utils.ts, providers), alerte AVANT la modification :
+
+```
+--- BREAKAGE RISK ---
+Tu modifies {fichier} qui est importé par {N} fichiers :
+  - {liste des 3 plus critiques}
+
+Impact : {ÉLEVÉ si layout/provider/lib, MOYEN si composant partagé, FAIBLE si feature isolée}
+Recommandation : npm run build après cette modification.
+---
+```
+
+Quand alerter :
+- Modification d'un layout (`layout.tsx`) → ÉLEVÉ
+- Modification d'un provider/context → ÉLEVÉ
+- Modification de `lib/errors.ts`, `lib/utils.ts`, `lib/config.ts` → ÉLEVÉ
+- Modification d'un composant dans `components/ui/` → MOYEN
+- Modification d'un composant feature isolé → pas d'alerte
+
+Après une modification à impact ÉLEVÉ, proposer de lancer `npm run build` pour vérifier que rien n'est cassé.
+
+---
+
+## Understanding Check (P0)
+
+Quand tu génères du code **critique** (auth, paiement, webhooks, RLS, middleware, crypto), ajoute un bloc d'explication court APRÈS le code :
+
+```
+--- CE QUE CE CODE FAIT ---
+{Explication en 2-3 phrases simples, comme si tu expliquais à un junior}
+
+Concept clé : {le concept de sécurité/archi important à retenir}
+Si ça casse : {où regarder en premier}
+---
+```
+
+Quand expliquer :
+- Webhook handler (signature verification, return 200 immédiat)
+- Middleware/proxy (session refresh, route protection)
+- RLS policies (qui voit quoi, pourquoi)
+- Server Actions avec revalidation (cache invalidation)
+- Stripe checkout/billing portal (flow complet)
+- Auth flow (OAuth callback, PKCE, session cookies)
+
+Quand NE PAS expliquer :
+- CRUD basique (create, read, update, delete)
+- Composants UI simples
+- Styles et design
+- Tout ce qui est évident pour un dev junior
+
+L'explication doit être **courte** (3 lignes max). Pas un cours. Juste assez pour que le vibe coder sache ce qu'il colle.
+
+---
+
+## ENV Doctor (P0)
+
+Quand l'utilisateur a une erreur liée aux variables d'environnement, OU quand tu crées un fichier qui dépend d'env vars, diagnostique automatiquement :
+
+```
+--- ENV DOCTOR ---
+{Variable} : {statut}
+
+  ❌ MANQUANT : {var} — pas dans .env
+     → Obtenir : {instruction précise pour obtenir la clé}
+
+  ⚠️ VIDE : {var} — présent mais valeur vide
+     → Remplir avec la valeur de {source}
+
+  ❌ MAL NOMMÉ : {var_erronée} → devrait être {var_correcte}
+
+  ✅ OK : {var}
+
+Commande pour tester : {commande de test}
+---
+```
+
+Quand diagnostiquer :
+- Erreur "Missing env var" ou "undefined" dans un output
+- Création d'un fichier qui utilise `process.env.X`
+- L'utilisateur dit "ça marche pas" et le code utilise des env vars
+- Après le setup initial d'un projet (`/orchestre-go`)
+
+Variables courantes à vérifier :
+| Variable | Source |
+|----------|--------|
+| NEXT_PUBLIC_SUPABASE_URL | Supabase Dashboard → Settings → API |
+| NEXT_PUBLIC_SUPABASE_ANON_KEY | Supabase Dashboard → Settings → API |
+| SUPABASE_SERVICE_ROLE_KEY | Supabase Dashboard → Settings → API |
+| STRIPE_SECRET_KEY | Stripe Dashboard → Developers → API Keys |
+| STRIPE_WEBHOOK_SECRET | `stripe listen --forward-to localhost:3000/api/webhooks/stripe` |
+| RESEND_API_KEY | Resend Dashboard → API Keys |
+
+---
+
+## Honest Mode (P0)
+
+Quand l'utilisateur demande une évaluation ("c'est bien ?", "c'est prêt ?", "c'est secure ?", "on peut ship ?"), répondre avec la réalité, pas avec de la complaisance :
+
+```
+--- REALITY CHECK ---
+Ce qui va :
+  ✅ {point positif concret}
+  ✅ {point positif concret}
+
+Ce qui va PAS :
+  ❌ {problème concret avec conséquence}
+  ❌ {problème concret avec conséquence}
+
+Verdict : {OUI/NON/PRESQUE} — {raison en 1 phrase}
+{Si NON : temps estimé pour fix}
+---
+```
+
+Règles :
+- JAMAIS dire "c'est excellent !" si c'est pas vrai
+- JAMAIS dire "c'est prêt pour la prod" si il y a des failles de sécurité
+- TOUJOURS lister les vrais problèmes, même si l'utilisateur veut entendre "oui"
+- Si c'est vraiment bien → le dire aussi. Honnête = pas négatif, c'est factuel.
+
+Exemples de malhonnêteté à éviter :
+- ~~"Très bonne architecture !"~~ alors qu'il y a du fetch dans les composants
+- ~~"Sécurisé !"~~ alors qu'il n'y a pas de RLS
+- ~~"Prêt à ship !"~~ alors que `npm run build` crash
+- ~~"Excellent code !"~~ alors qu'il y a des `any` partout
+
+---
+
+## Progress Awareness (P1)
+
+Après chaque milestone significatif (feature terminée, bug fixé, module complété), afficher un résumé compact de progression :
+
+```
+--- PROGRESS ---
+Fait :
+  ✅ {feature 1}
+  ✅ {feature 2}
+  ⏳ {feature en cours}
+
+Reste :
+  ○ {feature pas commencée}
+  ○ {feature pas commencée}
+
+Deployable : {OUI/NON} ({raison si non})
+Prochaine étape : {next}
+---
+```
+
+Quand afficher :
+- Après qu'une feature complète est terminée (pas après chaque fichier)
+- Quand l'utilisateur demande "où j'en suis ?"
+- Quand DONE-WHEN a des items complétés
+
+Quand NE PAS afficher :
+- Après chaque petit changement
+- Au milieu d'une feature (trop fréquent = bruit)
+
+---
+
+## Complexity Alert (P1)
+
+Quand tu génères ou modifies un fichier qui dépasse les seuils de lisibilité, alerte :
+
+```
+--- COMPLEXITY ALERT ---
+{fichier} dépasse les seuils :
+  {métrique} : {valeur actuelle} (seuil : {seuil})
+
+Toi dans 2 semaines, tu ne comprendras pas ce code.
+Découper en composants plus petits ? (Y/n)
+---
+```
+
+Seuils :
+| Métrique | Seuil | Ce que ça signifie |
+|----------|-------|--------------------|
+| Lignes par fichier | >150 | Fichier trop long, découper |
+| useEffect par composant | >3 | Trop d'effets, extraire en hooks custom |
+| Ternaires imbriquées | >1 | Illisible, utiliser des if/early return |
+| Props par composant | >8 | Composant fait trop de choses, découper |
+| Paramètres par fonction | >4 | Utiliser un objet config |
+| Nesting depth (if/for/map) | >3 | Extraire en fonctions |
+
+Quand alerter :
+- Quand tu ÉCRIS du code qui dépasse un seuil
+- Pas rétroactivement sur du code existant (sauf si l'utilisateur demande un audit)
+
+---
+
+## Dead Code Alert (P2)
+
+Quand tu remarques pendant le travail qu'un fichier n'est plus utilisé (tu viens de le remplacer, de le refactorer, ou de supprimer son import), signale-le :
+
+```
+--- DEAD CODE ---
+{fichier} n'est plus importé nulle part.
+Raison probable : {remplacé par X / refactoré / ancien test}
+
+Supprimer ? (Y/n)
+---
+```
+
+Quand alerter :
+- Tu viens de créer un nouveau composant qui remplace un ancien
+- Tu viens de refactorer et l'ancien fichier n'a plus d'imports
+- Tu vois un fichier avec un nom comme `*-old.*`, `*-backup.*`, `*-v1.*`
+
+Quand NE PAS alerter :
+- Fichiers de config (même sans imports, ils sont utilisés)
+- Fichiers de test
+- Fichiers de type/schema (peuvent être utilisés indirectement)
+
 ### Commandes disponibles
 - `/orchestre-go "description"` — Génère un projet complet
 - `/orchestre-audit` — Audit le code existant, score /100
