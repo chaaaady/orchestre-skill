@@ -1,6 +1,6 @@
 # Orchestre Skill
 
-**Quality Layer for Claude Code** — Transforms every session into production-ready output.
+**Quality Layer for AI-assisted coding.** Works with **Claude Code** (full power) and **Cursor** (rules + guards).
 
 Drop it in. Every response follows Clean Architecture, strict TypeScript, security best practices, and semantic design tokens. No config. No ceremony. Just better code.
 
@@ -32,28 +32,30 @@ Same prompt. Same developer. Production-ready code automatically.
 
 ## Install (30 seconds)
 
-### Global install (recommended — active in every project)
-
 ```bash
 git clone https://github.com/chaaaady/orchestre-skill.git /tmp/orchestre-skill
-
-# Copy to ~/.claude/ (global Claude Code config)
-cp /tmp/orchestre-skill/CLAUDE.md ~/.claude/CLAUDE.md
-cp -r /tmp/orchestre-skill/.claude/agents ~/.claude/agents
-cp -r /tmp/orchestre-skill/.claude/skills ~/.claude/skills
-cp -r /tmp/orchestre-skill/.claude/rules ~/.claude/rules
+cd your-project
 ```
 
-Done. Open Claude Code anywhere — Orchestre is active.
-
-### Per-project install (hooks + knowledge base)
+### Claude Code (full power — hooks, agents, pipeline, guards)
 
 ```bash
-cd your-project
-bash /tmp/orchestre-skill/install.sh .
+bash /tmp/orchestre-skill/install.sh --claude .
 ```
 
-This adds hooks (real-time guardrails), library templates, and knowledge base to your project.
+### Cursor (rules + guards — no hooks/agents)
+
+```bash
+bash /tmp/orchestre-skill/install.sh --cursor .
+```
+
+### Both (if you use both editors)
+
+```bash
+bash /tmp/orchestre-skill/install.sh --both .
+```
+
+Auto-detects your editor if you omit the flag.
 
 ---
 
@@ -61,12 +63,12 @@ This adds hooks (real-time guardrails), library templates, and knowledge base to
 
 ### Always active (loaded every session)
 
-| File | Lines | What it does |
-|------|-------|-------------|
-| `CLAUDE.md` | 207 | Architecture rules R1-R8, coding standards, security, tool references |
-| `.claude/rules/` | 279 | Path-specific TypeScript + security rules |
+| File | Claude Code | Cursor | What it does |
+|------|------------|--------|-------------|
+| `CLAUDE.md` / `.cursorrules` | 531 lines | 427 lines | Architecture rules R1-R8, guards, coding standards, security |
+| `.claude/rules/` / `.cursor/rules/` | Yes | Yes | Path-specific TypeScript + security rules |
 
-### Real-time guardrails (hooks)
+### Real-time guardrails — Claude Code only
 
 | Hook | Blocks |
 |------|--------|
@@ -74,7 +76,7 @@ This adds hooks (real-time guardrails), library templates, and knowledge base to
 | `post-write-check.sh` | TypeScript errors (runs typecheck after every write) |
 | `pre-commit-audit.sh` | Secrets in staged files, exposed ENV vars |
 
-### On-demand (slash commands)
+### Slash commands — Claude Code only
 
 | Command | What it does |
 |---------|-------------|
@@ -82,7 +84,7 @@ This adds hooks (real-time guardrails), library templates, and knowledge base to
 | `/orchestre-audit` | Audits existing code. Architecture + security + design. Score /100. |
 | `/orchestre-status` | Shows pipeline progress, features, costs |
 
-### Wave agents (7 specialized agents)
+### Wave agents — Claude Code only
 
 | Agent | Role |
 |-------|------|
@@ -94,11 +96,11 @@ This adds hooks (real-time guardrails), library templates, and knowledge base to
 | `feature-worker` | Implements a single feature in isolation |
 | `wave-design` | Generates design system from brief |
 
-### Knowledge base (read when relevant)
+### Knowledge base — Both editors
 
 18 library templates covering: Stripe, Supabase, auth hardening, RLS, error handling, Server Actions, rate limiting, React Hook Form + Zod, Recharts, shadcn advanced, Resend, Sentry, TanStack Query, and more.
 
-### Infrastructure
+### Infrastructure — Claude Code only
 
 | Pattern | What it defines |
 |---------|----------------|
@@ -107,6 +109,23 @@ This adds hooks (real-time guardrails), library templates, and knowledge base to
 | `execution-registry.md` | Self-describing registry of all agents, tools, skills, hooks |
 | `permission-context.md` | Immutable permission context per wave (plan mode vs execute) |
 | `session-store.md` | JSON persistence per wave with resume and replay |
+
+---
+
+## Claude Code vs Cursor — what you get
+
+| Feature | Claude Code | Cursor |
+|---------|------------|--------|
+| Architecture rules R1-R8 | Yes | Yes |
+| 10 guards (over-engineering, breakage, honest mode...) | Yes | Yes |
+| Coding standards + security | Yes | Yes |
+| 18 library templates | Yes | Yes |
+| Knowledge base | Yes | Yes |
+| **AST hooks (real-time blocking)** | **Yes** | No |
+| **7 wave agents** | **Yes** | No |
+| **/orchestre-go pipeline** | **Yes** | No |
+| **Turn-loop + cost tracking** | **Yes** | No |
+| **Worktree parallelism** | **Yes** | No |
 
 ---
 
@@ -146,13 +165,11 @@ Optimized for **Next.js + Supabase + shadcn/ui + Stripe + Resend**, but the arch
 
 Orchestre operates on 2 levels:
 
-**Level 1: Quality Layer (always active)**
-CLAUDE.md is read by Claude Code at every session start. The 8 rules, coding standards, security practices, and design system constraints apply automatically to every response.
+**Level 1: Quality Layer (always active) — Claude Code + Cursor**
+Rules file (CLAUDE.md or .cursorrules) is read at every session start. The 8 architecture rules, 10 guards, coding standards, and security practices apply automatically to every response.
 
-**Level 2: Generation Pipeline (on demand)**
-`/orchestre-go` launches a full pipeline: brief generation → feature decomposition → atomic planning → parallel code generation → post-audit scoring.
-
-Each wave is a Claude Code agent with its own memory, tool restrictions, turn-loop constraints, and permission context.
+**Level 2: Generation Pipeline (on demand) — Claude Code only**
+`/orchestre-go` launches a full pipeline: brief generation → feature decomposition → atomic planning → parallel code generation → post-audit scoring. Each wave is a Claude Code agent with its own memory, tool restrictions, and turn-loop constraints.
 
 ---
 
@@ -166,4 +183,4 @@ MIT
 
 Built by **Chady** with Claude Opus 4.6.
 
-Engineered for Claude Code. Built for production.
+Works with Claude Code and Cursor. Built for production.
