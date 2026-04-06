@@ -1,186 +1,277 @@
-# Orchestre Skill
+<p align="center">
+  <img src="https://raw.githubusercontent.com/chaaaady/orchestre/main/.github/assets/orchestre-logo.png" alt="Orchestre" width="120" />
+</p>
 
-**Quality Layer for AI-assisted coding.** Works with **Claude Code** (full power) and **Cursor** (rules + guards).
+<h1 align="center">Orchestre</h1>
 
-Drop it in. Every response follows Clean Architecture, strict TypeScript, security best practices, and semantic design tokens. No config. No ceremony. Just better code.
+<p align="center">
+  <strong>Clean architecture enforcement for AI-generated code.</strong><br>
+  <sub>Hooks, rules, and agents that turn Claude Code and Cursor into production-grade machines.</sub>
+</p>
+
+<p align="center">
+  <a href="https://github.com/chaaaady/orchestre/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
+  <img src="https://img.shields.io/badge/tests-166_passing-brightgreen" alt="166 tests passing" />
+  <img src="https://img.shields.io/badge/hooks-17_checks-orange" alt="17 hook checks" />
+  <img src="https://img.shields.io/badge/stacks-2-blueviolet" alt="2 stacks" />
+</p>
+
+<p align="center">
+  <a href="#the-problem">Problem</a>&ensp;&bull;&ensp;<a href="#how-it-works">How It Works</a>&ensp;&bull;&ensp;<a href="#quickstart">Quickstart</a>&ensp;&bull;&ensp;<a href="#the-8-rules">Rules</a>&ensp;&bull;&ensp;<a href="#supported-stacks">Stacks</a>&ensp;&bull;&ensp;<a href="CONTRIBUTING.md">Contribute</a>
+</p>
 
 ---
 
-## What it does
+## The Problem
 
-**Without Orchestre:**
+AI code generators produce working prototypes on day 1.
+By day 2, adding a feature breaks everything.
+
+The code compiles — but it's a monolith with `any` types, hardcoded colors, DB calls in components, unhandled errors, and no separation of concerns. You're not building software. You're accumulating technical debt at the speed of an LLM.
+
+**Orchestre fixes this at the source.** Instead of auditing after the fact, it intercepts every file write with AST-based hooks and enforces clean architecture in real time — before the code reaches disk.
+
+---
+
+## Before / After
+
 ```typescript
-// Claude generates this
-const donations = await supabase.from('donations').select()  // in a component
-className="bg-blue-500"                                       // hardcoded color
-throw new Error('Failed')                                     // in lib/
-const data: any = await fetch(url)                           // any type
+// WITHOUT ORCHESTRE — what Claude actually generates
+
+const donations = await supabase.from('donations').select()  // DB call in component
+className="bg-blue-500 text-red-600"                          // hardcoded colors
+throw new Error('Failed')                                      // unhandled throw in lib/
+const data: any = await fetch(url)                            // any type, fetch in UI
 ```
 
-**With Orchestre:**
 ```typescript
-// Claude generates this instead
-const result = await getDonations(user.id)                    // lib/queries/
-className="bg-primary"                                        // semantic token
-return { success: false, error: new AppError('DB_ERROR') }   // Result<T>
-const data: unknown = await fetchData(url)                   // strict typing
+// WITH ORCHESTRE — same prompt, same model
+
+const result = await getDonations(user.id)                    // lib/queries/, Result<T>
+className="bg-primary text-destructive"                        // semantic tokens
+return { success: false, error: new AppError('DB_ERROR') }    // explicit error handling
+const parsed = userSchema.safeParse(await fetchUser(id))      // Zod-validated, typed
 ```
 
-Same prompt. Same developer. Production-ready code automatically.
+No config. No ceremony. The hooks block the first version automatically.
 
 ---
 
-## Install (30 seconds)
+## How It Works
 
-```bash
-git clone https://github.com/chaaaady/orchestre-skill.git /tmp/orchestre-skill
-cd your-project
+Orchestre operates at two levels:
+
+### Level 1 — Quality Layer (always active)
+
+Loaded into every Claude Code or Cursor session. Zero config.
+
+**Pre-write hooks** analyze every file before it's saved — using the TypeScript compiler API, not regex. They block violations in real time:
+
+| Check | ID | Catches |
+|-------|----|---------|
+| Secret detection | SECRET-01..10 | Stripe keys, JWTs, GitHub PATs, AWS credentials |
+| Type safety | TS-01 | `any` type annotations |
+| Error discipline | TS-02 | `throw` in business logic layer |
+| Architecture boundary | TS-03 | DB/fetch calls in components |
+| Import hygiene | IMPORT-01..03 | Deep relative paths, cross-feature imports, server leaks |
+| Design tokens | DESIGN-01 | Hardcoded Tailwind colors (`bg-blue-500`) |
+
+Plus **10 runtime guards**: over-engineering detection, breakage alerts, complexity warnings, dead code tracking, honest evaluation mode, ENV diagnostics, and progress awareness.
+
+### Level 2 — Generation Pipeline (on demand)
+
+Launch with `/orchestre-go "build a SaaS for X"` to get a full pipeline:
+
+```
+ You describe it
+      │
+      ▼
+ ┌─────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐    ┌──────────┐
+ │ Wave 0   │───▶│ Wave 1   │───▶│ Wave 2   │───▶│ Wave 3   │───▶│ Wave 4   │
+ │ Lint     │    │ Features │    │ Task DAG │    │ Code Gen │    │ Audit    │
+ │ brief    │    │ decomp   │    │ planning │    │ parallel │    │ score    │
+ └─────────┘    └──────────┘    └──────────┘    └──────────┘    └──────────┘
+   read-only      read-only       read-only       execute        read-only
 ```
 
-### Claude Code (full power — hooks, agents, pipeline, guards)
-
-```bash
-bash /tmp/orchestre-skill/install.sh --claude .
-```
-
-### Cursor (rules + guards — no hooks/agents)
-
-```bash
-bash /tmp/orchestre-skill/install.sh --cursor .
-```
-
-### Both (if you use both editors)
-
-```bash
-bash /tmp/orchestre-skill/install.sh --both .
-```
-
-Auto-detects your editor if you omit the flag.
+Each wave is a **separate Claude Code agent** with its own memory, tool restrictions, and token budget. No prompt debt. No infinite loops. Features without mutual dependencies execute in parallel via git worktrees.
 
 ---
 
-## What's included
+## Quickstart
 
-### Always active (loaded every session)
+```bash
+# Interactive — picks your stack
+npx orchestre init
 
-| File | Claude Code | Cursor | What it does |
-|------|------------|--------|-------------|
-| `CLAUDE.md` / `.cursorrules` | 531 lines | 427 lines | Architecture rules R1-R8, guards, coding standards, security |
-| `.claude/rules/` / `.cursor/rules/` | Yes | Yes | Path-specific TypeScript + security rules |
+# Direct
+npx orchestre init --stack nextjs-supabase
+npx orchestre init --stack sveltekit-drizzle
+```
 
-### Real-time guardrails — Claude Code only
+Or clone + install:
 
-| Hook | Blocks |
-|------|--------|
-| `pre-write-guard.sh` | Hardcoded colors, business logic in components, `throw` in lib/, `any` types, secrets |
-| `post-write-check.sh` | TypeScript errors (runs typecheck after every write) |
-| `pre-commit-audit.sh` | Secrets in staged files, exposed ENV vars |
+```bash
+git clone https://github.com/chaaaady/orchestre.git /tmp/orchestre
+node /tmp/orchestre/bin/install.mjs ./my-project --stack nextjs-supabase
+```
 
-### Slash commands — Claude Code only
+Verify the installation:
+
+```bash
+node bin/verify.mjs
+```
+
+That's it. Every Claude Code session in this project now enforces clean architecture.
+
+---
+
+## The 8 Rules
+
+Six rules are **universal** (every stack, every language). Two are **stack-specific**.
+
+| Rule | Enforces | Prevents |
+|------|----------|----------|
+| **R1** | Business logic in `lib/` only | DB calls in components |
+| **R2** | Components = pure UI (props only) | `useQuery`, `fetch` in UI |
+| **R3** | Types from schemas (`z.infer<>`) | Manual type duplication |
+| **R4** | Errors as values (`Result<T>`) | Unhandled `throw` in logic layer |
+| **R5** | 1 feature = 1 isolated folder | Cross-feature imports |
+| **R6** | Server-first rendering | Client-side everything |
+| **R7** | Mutations via Server/Form Actions | Raw `fetch POST` to API routes |
+| **R8** | Typed constants | Magic strings |
+
+R1-R5 and R8 are enforced by AST hooks. R6-R7 adapt to your stack's conventions.
+
+---
+
+## Supported Stacks
+
+| Stack | ID | Hooks | Knowledge files |
+|-------|-----|-------|-----------------|
+| **Next.js** + Supabase + Tailwind + Stripe | `nextjs-supabase` | 3 AST checkers | 15 pattern guides |
+| **SvelteKit** + Drizzle + Tailwind + Stripe | `sveltekit-drizzle` | 1 AST checker + server leak detection | 11 pattern guides |
+
+Each stack ships with production patterns for auth, payments, forms, webhooks, RLS, rate limiting, error handling, and more. These aren't snippets — they're full lifecycle patterns covering edge cases, error states, and security.
+
+### Adding a stack
+
+```
+stacks/your-stack/
+├── stack.json              # Config and rule mappings
+├── CLAUDE.stack.md         # Stack-specific rules
+├── hooks/                  # AST-based checkers
+├── knowledge/              # Production patterns
+└── templates/              # Starter code
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
+
+---
+
+## What's Inside
+
+```
+orchestre/
+├── core/
+│   ├── hooks/              # Pre-write guard + secret detection
+│   ├── agents/             # 7 wave agents for the generation pipeline
+│   ├── contracts/          # JSON Schema validation for pipeline artifacts
+│   ├── infrastructure/     # Turn-loop, cost tracking, sessions, permissions
+│   ├── knowledge/          # Universal patterns (errors, Zod, design)
+│   └── profiles/           # Budget / Balanced / Premium cost configs
+├── stacks/
+│   ├── nextjs-supabase/    # Hooks, rules, knowledge, templates
+│   └── sveltekit-drizzle/  # Hooks, rules, knowledge, templates
+├── examples/
+│   ├── saas-nextjs/        # Complete invoicing SaaS (17 files, all R1-R8)
+│   └── saas-sveltekit/     # Same app, different stack (16 files)
+├── bin/
+│   ├── install.mjs         # Smart installer with manifest tracking
+│   ├── verify.mjs          # 20-check installation validator
+│   └── cli.mjs             # CLI entry point
+└── __tests__/              # 166 tests
+```
+
+---
+
+## Claude Code Commands
+
+When installed in a Claude Code project, Orchestre adds these slash commands:
 
 | Command | What it does |
 |---------|-------------|
-| `/orchestre-go "description"` | Generates a full project: 5 questions → PROJECT.md → waves 0-4 → code + audit |
-| `/orchestre-audit` | Audits existing code. Architecture + security + design. Score /100. |
-| `/orchestre-status` | Shows pipeline progress, features, costs |
-
-### Wave agents — Claude Code only
-
-| Agent | Role |
-|-------|------|
-| `wave-0-linter` | Validates PROJECT.md, detects weight, secrets |
-| `wave-1-decomposer` | Decomposes into user-facing features |
-| `wave-2-planner` | Creates atomic tasks with dependency DAG |
-| `wave-3-generator` | Generates code with parallel worktree execution |
-| `wave-4-auditor` | Audits code against R1-R8, scores /100 |
-| `feature-worker` | Implements a single feature in isolation |
-| `wave-design` | Generates design system from brief |
-
-### Knowledge base — Both editors
-
-18 library templates covering: Stripe, Supabase, auth hardening, RLS, error handling, Server Actions, rate limiting, React Hook Form + Zod, Recharts, shadcn advanced, Resend, Sentry, TanStack Query, and more.
-
-### Infrastructure — Claude Code only
-
-| Pattern | What it defines |
-|---------|----------------|
-| `query-engine.md` | Turn-loop config per wave (max_turns, max_budget, compaction) |
-| `cost-tracker.md` | Granular cost tracking with pre-execution budget enforcement |
-| `execution-registry.md` | Self-describing registry of all agents, tools, skills, hooks |
-| `permission-context.md` | Immutable permission context per wave (plan mode vs execute) |
-| `session-store.md` | JSON persistence per wave with resume and replay |
+| `/orchestre-go "description"` | Full pipeline: brief → 5 waves → production code + audit |
+| `/orchestre-extend "feature"` | Add a feature respecting existing architecture |
+| `/orchestre-harden` | Add error handling, edge cases, security hardening |
+| `/orchestre-deploy-check` | Pre-deploy: build, ENV vars, types, security, routes |
+| `/orchestre-recover` | Restructure chaotic vibe-coded project into clean arch |
+| `/orchestre-audit` | Audit existing code and score /100 |
 
 ---
 
-## Claude Code vs Cursor — what you get
+## Architecture
 
-| Feature | Claude Code | Cursor |
-|---------|------------|--------|
-| Architecture rules R1-R8 | Yes | Yes |
-| 10 guards (over-engineering, breakage, honest mode...) | Yes | Yes |
-| Coding standards + security | Yes | Yes |
-| 18 library templates | Yes | Yes |
-| Knowledge base | Yes | Yes |
-| **AST hooks (real-time blocking)** | **Yes** | No |
-| **7 wave agents** | **Yes** | No |
-| **/orchestre-go pipeline** | **Yes** | No |
-| **Turn-loop + cost tracking** | **Yes** | No |
-| **Worktree parallelism** | **Yes** | No |
+Orchestre is not a linter. It's not a CLI that runs after you write code. It's an **interception layer** that sits between the AI and the filesystem.
 
----
+```
+  Claude / Cursor
+        │
+        │ Write("components/chart.tsx", content)
+        ▼
+  ┌─────────────────────┐
+  │  orchestre-guard.mjs │ ← Pre-write hook
+  │                     │
+  │  1. Parse AST        │
+  │  2. Run 17 checks    │
+  │  3. Block or pass    │
+  └─────────────────────┘
+        │
+        ▼
+   File written (or blocked with violation details)
+```
 
-## The 8 Rules (always enforced)
+The guard loads **core checkers** (secrets, always active) and **stack checkers** (AST-based, loaded dynamically from your stack's `hooks/` directory). Checkers run in parallel with a 3-second timeout. If a checker crashes, the hook degrades gracefully — it warns instead of blocking.
 
-| Rule | Principle |
-|------|-----------|
-| R1 | Business logic in `lib/` only — never in `app/` or `components/` |
-| R2 | Components are pure UI — data via props, no fetching |
-| R3 | Types inferred from Zod — `z.infer<typeof schema>`, never manual |
-| R4 | Errors as `Result<T>` — never `throw` in `lib/` |
-| R5 | 1 feature = 1 isolated folder — no cross-feature imports |
-| R6 | Server Components by default — `'use client'` only when needed |
-| R7 | Mutations via Server Actions only — no direct `fetch POST` |
-| R8 | No magic strings — use const enums |
+The contract system validates pipeline artifacts (intent, plan, state) against JSON Schemas before each wave transition. No wave can start until the previous one's output passes validation.
 
 ---
 
-## Scoring
+## Philosophy
 
-| Dimension | Without Orchestre | With Orchestre |
-|-----------|------------------|----------------|
-| **Code Quality** | 30/100 | **89/100** |
-| **Development Speed** | 46/100 | **85/100** |
-| **Maintainability** | 18/100 | **88/100** |
-| **Overall** | **31/100** | **87/100** |
-
----
-
-## Stack
-
-Optimized for **Next.js + Supabase + shadcn/ui + Stripe + Resend**, but the architecture rules (R1-R8) and coding standards apply to any TypeScript project.
+- **Guard, don't audit.** Block violations before they reach disk. Don't review after the fact.
+- **Architecture before code.** Decisions happen in Wave 2. Code happens in Wave 3. Never mixed.
+- **Ship 7/10, don't polish 10/10.** The over-engineering guard detects scope drift and diminishing returns.
+- **Fail loud.** Errors surface immediately. Silent degradation is a bug.
+- **Parallel-first.** Independent features build simultaneously in git worktrees.
 
 ---
 
-## How it works
+## Examples
 
-Orchestre operates on 2 levels:
+The `examples/` directory contains complete generated projects that follow all 8 rules:
 
-**Level 1: Quality Layer (always active) — Claude Code + Cursor**
-Rules file (CLAUDE.md or .cursorrules) is read at every session start. The 8 architecture rules, 10 guards, coding standards, and security practices apply automatically to every response.
+| Example | Stack | Demonstrates |
+|---------|-------|-------------|
+| [`saas-nextjs/`](examples/saas-nextjs/) | Next.js + Supabase + Stripe | Auth, CRUD, Stripe webhooks, Result pattern, RLS |
+| [`saas-sveltekit/`](examples/saas-sveltekit/) | SvelteKit + Drizzle + Stripe | Same app, different stack — proves portability |
 
-**Level 2: Generation Pipeline (on demand) — Claude Code only**
-`/orchestre-go` launches a full pipeline: brief generation → feature decomposition → atomic planning → parallel code generation → post-audit scoring. Each wave is a Claude Code agent with its own memory, tool restrictions, and turn-loop constraints.
+---
+
+## Contributing
+
+The most impactful contribution is **adding a new stack**. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Other ways to contribute: improve knowledge templates with real-world patterns, add hook checkers for new frameworks, or report false positives.
 
 ---
 
 ## License
 
-MIT
+[MIT](LICENSE)
 
 ---
 
-## Author
-
-Built by **Chady** with Claude Opus 4.6.
-
-Works with Claude Code and Cursor. Built for production.
+<p align="center">
+  Built by <a href="https://github.com/chaaaady"><strong>Chady</strong></a>
+</p>

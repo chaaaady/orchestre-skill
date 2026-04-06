@@ -1,22 +1,39 @@
 {
-  "name": "orchestre-skill",
-  "version": "2.0.0",
-  "description": "Orchestre V2 — Quality Layer for Claude Code with AST hooks, contract validation, and stack adaptability",
+  "name": "orchestre",
+  "version": "3.0.0",
+  "description": "Clean architecture enforcement for AI code generation. Works with Claude Code and Cursor.",
   "type": "module",
   "scripts": {
     "test": "node --test __tests__/**/*.test.mjs",
-    "validate": "node contracts/validate.mjs",
+    "validate": "node core/contracts/validate.mjs",
     "install-project": "node bin/install.mjs",
-    "install-global": "node bin/install.mjs --global"
+    "install-global": "node bin/install.mjs --global",
+    "list-stacks": "node bin/install.mjs --list-stacks",
+    "verify": "node bin/verify.mjs",
+    "sync": "cp core/agents/*.md .claude/agents/ && cp stacks/nextjs-supabase/rules/*.md .claude/rules/ && echo 'Synced core → .claude'"
   },
   "bin": {
-    "orchestre-install": "./bin/install.mjs"
+    "orchestre": "./bin/cli.mjs"
   },
-  "keywords": ["claude-code", "orchestre", "quality", "architecture", "nextjs", "supabase", "ast-hooks", "contract-validation"],
+  "keywords": [
+    "claude-code",
+    "cursor",
+    "ai",
+    "code-generation",
+    "clean-architecture",
+    "ast-hooks",
+    "nextjs",
+    "sveltekit",
+    "typescript",
+    "vibe-coding"
+  ],
   "author": "chaaaady",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/chaaaady/orchestre-skill"
+    "url": "https://github.com/chaaaady/orchestre"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2"
   }
 }

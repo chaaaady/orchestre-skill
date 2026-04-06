@@ -1,0 +1,62 @@
+{
+  "version": "3.0.0",
+  "description": "Registry of available hook checkers by mode and stack.",
+  "modes": {
+    "pre-write": {
+      "description": "Runs before Write/Edit. Blocks on violations.",
+      "core_checkers": ["secrets"],
+      "stack_checkers_loaded_from": "stacks/{stack_id}/hooks/"
+    },
+    "post-write": {
+      "description": "Runs after Write/Edit. Warnings only, does not block.",
+      "core_checkers": [],
+      "stack_checkers_loaded_from": null
+    },
+    "pre-commit": {
+      "description": "Runs before git commit. Blocks on secrets.",
+      "core_checkers": ["secrets"],
+      "stack_checkers_loaded_from": null
+    }
+  },
+  "core_checkers": {
+    "secrets": {
+      "file": "core/hooks/lib/checkers/secrets.mjs",
+      "rules": ["SECRET-01", "SECRET-02", "SECRET-03", "SECRET-04", "SECRET-05", "SECRET-06", "SECRET-07", "SECRET-08", "SECRET-09", "SECRET-10"],
+      "description": "Detects hardcoded API keys, JWTs, tokens, and sensitive data in console.log"
+    }
+  },
+  "stacks": {
+    "nextjs-supabase": {
+      "checkers": {
+        "tailwind-tokens": {
+          "file": "stacks/nextjs-supabase/hooks/tailwind-tokens.mjs",
+          "rules": ["DESIGN-01"]
+        },
+        "typescript-ast": {
+          "file": "stacks/nextjs-supabase/hooks/typescript-ast.mjs",
+          "rules": ["TS-01", "TS-02", "TS-03"]
+        },
+        "import-paths": {
+          "file": "stacks/nextjs-supabase/hooks/import-paths.mjs",
+          "rules": ["IMPORT-01", "IMPORT-02"]
+        }
+      }
+    },
+    "sveltekit-drizzle": {
+      "checkers": {
+        "tailwind-tokens": {
+          "file": "stacks/sveltekit-drizzle/hooks/tailwind-tokens.mjs",
+          "rules": ["DESIGN-01"]
+        },
+        "typescript-ast": {
+          "file": "stacks/sveltekit-drizzle/hooks/typescript-ast.mjs",
+          "rules": ["TS-01", "TS-02", "TS-03"]
+        },
+        "svelte-imports": {
+          "file": "stacks/sveltekit-drizzle/hooks/svelte-imports.mjs",
+          "rules": ["IMPORT-01", "IMPORT-02", "IMPORT-03"]
+        }
+      }
+    }
+  }
+}

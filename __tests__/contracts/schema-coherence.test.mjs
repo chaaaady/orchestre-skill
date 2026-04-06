@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const schemasDir = join(__dirname, '..', '..', 'contracts', 'schemas');
+const schemasDir = join(__dirname, '..', '..', 'core', 'contracts', 'schemas');
 
 describe('schema coherence', () => {
   const schemaFiles = readdirSync(schemasDir).filter(f => f.endsWith('.schema.json'));

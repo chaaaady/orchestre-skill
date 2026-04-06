@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const agentsDir = join(__dirname, '..', '..', '.claude', 'agents');
+const agentsDir = join(__dirname, '..', '..', 'core', 'agents');
 
 const REQUIRED_SECTIONS = [
   /##\s*(IDENTITY|Identity|Role)/i,

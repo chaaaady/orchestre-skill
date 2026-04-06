@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Orchestre V2 — Smart Installer
+ * Orchestre V3 — Smart Installer (core/stacks architecture)
  *
  * Usage:
  *   node bin/install.mjs [target-dir] [--stack <name>] [--uninstall] [--global]
@@ -8,11 +8,17 @@
  * Examples:
  *   node bin/install.mjs .                          # Install to current project (default stack)
  *   node bin/install.mjs . --stack nextjs-supabase   # Explicit stack
+ *   node bin/install.mjs . --stack sveltekit-drizzle # Different stack
  *   node bin/install.mjs --global                    # Install to ~/.claude/ (global)
  *   node bin/install.mjs . --uninstall               # Uninstall from project
+ *
+ * New architecture:
+ *   - core/     = universal (contracts, infrastructure, profiles, base hooks, agents)
+ *   - stacks/   = stack-specific (hooks, knowledge, templates, rules, CLAUDE.stack.md)
+ *   - Installer assembles: core + stacks/{id} -> target project
  */
-import { readFileSync, writeFileSync, existsSync, mkdirSync, cpSync, readdirSync, statSync, rmSync } from 'node:fs';
-import { join, dirname, resolve, relative } from 'node:path';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
@@ -40,11 +46,8 @@ function deepMerge(target, source) {
     if (val && typeof val === 'object' && !Array.isArray(val) && typeof result[key] === 'object' && !Array.isArray(result[key])) {
       result[key] = deepMerge(result[key], val);
     } else if (Array.isArray(val) && Array.isArray(result[key])) {
-      // For arrays (like hooks), filter out old orchestre entries and add new ones
       const filtered = result[key].filter(item => {
-        if (typeof item === 'object' && item.command) {
-          return !item.command.includes('orchestre');
-        }
+        if (typeof item === 'object' && item.command) return !item.command.includes('orchestre');
         return true;
       });
       result[key] = [...filtered, ...val];
@@ -75,10 +78,7 @@ function copyTracked(src, dest, manifest) {
   const srcContent = readFileSync(src);
   const srcHash = sha256(srcContent);
 
-  // Skip if identical
-  if (existing && sha256(existing) === srcHash) {
-    return 'skipped';
-  }
+  if (existing && sha256(existing) === srcHash) return 'skipped';
 
   manifest.files.push({
     path: dest,
@@ -111,30 +111,21 @@ function copyDirTracked(srcDir, destDir, manifest) {
 
 function mergeSettings(target, manifest) {
   const settingsPath = join(target, '.claude', 'settings.json');
-  const orchestreSettingsPath = join(PKG_ROOT, '.claude', 'settings.json');
 
-  const existing = safeRead(settingsPath);
-  const orchestre = JSON.parse(readFileSync(orchestreSettingsPath, 'utf8'));
-
-  // Update hook commands to use new Node.js guard
   const v2Hooks = {
     hooks: {
       PreToolUse: [
-        { matcher: "Write|Edit", command: "node hooks/orchestre-guard.mjs --mode pre-write" }
+        { matcher: "Write|Edit", command: "node core/hooks/orchestre-guard.mjs --mode pre-write" }
       ],
       PostToolUse: [
-        { matcher: "Write|Edit", command: "node hooks/orchestre-guard.mjs --mode post-write" }
+        { matcher: "Write|Edit", command: "node core/hooks/orchestre-guard.mjs --mode post-write" }
       ]
     }
   };
 
+  const existing = safeRead(settingsPath);
   if (existing) {
-    manifest.files.push({
-      path: settingsPath,
-      original_hash: sha256(existing),
-      orchestre_hash: null, // Will be set after merge
-      action: 'merged',
-    });
+    manifest.files.push({ path: settingsPath, original_hash: sha256(existing), orchestre_hash: null, action: 'merged' });
     const merged = deepMerge(JSON.parse(existing), v2Hooks);
     const content = JSON.stringify(merged, null, 2);
     manifest.files[manifest.files.length - 1].orchestre_hash = sha256(content);
@@ -142,106 +133,41 @@ function mergeSettings(target, manifest) {
   } else {
     ensureDir(dirname(settingsPath));
     const content = JSON.stringify(v2Hooks, null, 2);
-    manifest.files.push({
-      path: settingsPath,
-      original_hash: null,
-      orchestre_hash: sha256(content),
-      action: 'created',
-    });
+    manifest.files.push({ path: settingsPath, original_hash: null, orchestre_hash: sha256(content), action: 'created' });
     writeFileSync(settingsPath, content);
   }
 }
 
-// --- CLAUDE.md generation ---
+// --- CLAUDE.md assembly (core/CLAUDE.base.md + stacks/{id}/CLAUDE.stack.md) ---
 
-function generateClaudeMd(target, stackName, manifest) {
+function assembleClaudeMd(target, stackName, manifest) {
   const claudePath = join(target, 'CLAUDE.md');
-  const templatePath = join(PKG_ROOT, 'CLAUDE.md.template');
   const existing = safeRead(claudePath);
 
-  // Load stack manifests
-  const basePath = join(PKG_ROOT, 'stacks', '_base.stack.json');
-  const stackPath = join(PKG_ROOT, 'stacks', `${stackName}.stack.json`);
+  // Read base
+  const baseMdPath = join(PKG_ROOT, 'core', 'CLAUDE.base.md');
+  let baseMd = safeRead(baseMdPath) || '# Orchestre — Quality Layer\n';
 
-  let base = {}, stack = {};
-  try { base = JSON.parse(readFileSync(basePath, 'utf8')); } catch {}
-  try { stack = JSON.parse(readFileSync(stackPath, 'utf8')); } catch {}
+  // Read stack-specific
+  const stackMdPath = join(PKG_ROOT, 'stacks', stackName, 'CLAUDE.stack.md');
+  const stackMd = safeRead(stackMdPath) || '';
 
-  // Merge rules
-  const allRules = { ...(base.rules || {}), ...(stack.rules || {}) };
-  const rulesSection = Object.values(allRules)
-    .filter(r => r.enabled)
-    .map(r => `### ${r.id} — ${r.description}`)
-    .join('\n\n');
+  // Load stack.json for metadata
+  const stackJsonPath = join(PKG_ROOT, 'stacks', stackName, 'stack.json');
+  let stackJson = {};
+  try { stackJson = JSON.parse(readFileSync(stackJsonPath, 'utf8')); } catch {}
 
-  // Singletons
-  const singletons = stack.singletons || {};
-  let singletonsSection = '';
-  if (Object.keys(singletons).length > 0) {
-    singletonsSection = '### Singletons\n| Client | File |\n|--------|------|\n' +
-      Object.entries(singletons).map(([name, cfg]) => `| ${name} | \`${cfg.file}\` |`).join('\n');
-  }
+  // Replace {{STACK_NAME}} in base
+  baseMd = baseMd.replace(/\{\{STACK_NAME\}\}/g, stackJson.name || stackName);
 
-  // Design system
-  const ds = stack.design_system || {};
-  let designSection = '';
-  if (ds.semantic_tokens_only) {
-    designSection = `### Design System\n- **NEVER** hardcoded Tailwind colors: ~~bg-blue-500~~ ~~text-red-600~~\n- **ALWAYS** semantic tokens: \`bg-primary\`, \`text-destructive\`, \`border-border\`\n- Icons: ${ds.icons || 'SVG'} only. ${ds.no_emoji_icons ? 'No emoji as icons.' : ''}`;
-  }
-
-  // Folder structure
-  const fs = stack.folder_structure || {};
-  const folderStructure = Object.entries(fs).map(([k, v]) => `${k.padEnd(14)} <- ${v}`).join('\n');
-
-  // Security
-  const sec = { ...(base.security || {}), ...(stack.security || {}) };
-  const securityLines = [];
-  if (sec.rls_on_all_user_tables) securityLines.push('- **RLS enabled** on all user tables');
-  if (sec.get_user_not_get_session) securityLines.push('- **`getUser()`** not `getSession()` for sensitive ops');
-  if (sec.zod_validation_server_side) securityLines.push('- **Zod validation** server-side on all inputs');
-  if (sec.webhook_signature_verification) securityLines.push('- **Webhook signatures** verified');
-  if (sec.env_validation_required) securityLines.push('- **`lib/config.ts`** validates ENV vars at boot');
-  if (sec.no_next_public_secrets) securityLines.push('- **Never `NEXT_PUBLIC_`** on secrets');
-  if (sec.no_console_log_sensitive) securityLines.push('- **Never `console.log`** with sensitive data');
-
-  // Knowledge
-  const kb = [...(base.knowledge_base || []), ...(stack.knowledge_base || [])];
-  const knowledgeTable = kb.length > 0
-    ? '| Topic | File |\n|-------|------|\n' + kb.map(k => `| ${k} | \`fixed-assets/library-templates/${k}.md\` |`).join('\n')
-    : '';
-
-  // If template exists, use it; otherwise generate directly
-  let content;
-  if (existsSync(templatePath)) {
-    content = readFileSync(templatePath, 'utf8')
-      .replace('{{STACK_NAME}}', stack.name || base.name || stackName)
-      .replace('{{RULES_SECTION}}', rulesSection)
-      .replace('{{IMPORT_ALIAS}}', (base.coding_standards || {}).import_alias || '@/')
-      .replace('{{SINGLETONS_SECTION}}', singletonsSection)
-      .replace('{{DESIGN_SYSTEM_SECTION}}', designSection)
-      .replace('{{FOLDER_STRUCTURE}}', folderStructure)
-      .replace('{{SECURITY_SECTION}}', securityLines.join('\n'))
-      .replace('{{KNOWLEDGE_TABLE}}', knowledgeTable);
-  } else {
-    // Fallback: use the existing CLAUDE.md from package
-    const fallback = safeRead(join(PKG_ROOT, 'CLAUDE.md'));
-    content = fallback || `# Orchestre — ${stackName}\n\nStack: ${stackName}`;
-  }
+  // Assemble: base + separator + stack
+  const separator = '\n\n---\n\n# Stack-Specific Configuration\n\n';
+  const content = baseMd + (stackMd ? separator + stackMd : '');
 
   if (existing) {
-    manifest.files.push({
-      path: claudePath,
-      original_hash: sha256(existing),
-      orchestre_hash: sha256(content),
-      action: 'modified',
-    });
+    manifest.files.push({ path: claudePath, original_hash: sha256(existing), orchestre_hash: sha256(content), action: 'modified' });
   } else {
-    manifest.files.push({
-      path: claudePath,
-      original_hash: null,
-      orchestre_hash: sha256(content),
-      action: 'created',
-    });
+    manifest.files.push({ path: claudePath, original_hash: null, orchestre_hash: sha256(content), action: 'created' });
   }
 
   writeFileSync(claudePath, content);
@@ -256,23 +182,16 @@ function uninstall(target) {
     process.exit(1);
   }
 
-  let restored = 0;
   let removed = 0;
-
   for (const entry of manifest.files) {
     if (entry.action === 'created') {
-      // File was created by Orchestre — remove it
       try { rmSync(entry.path); removed++; } catch {}
     } else if (entry.action === 'modified' || entry.action === 'merged') {
-      // File existed before — we can't restore it without a backup
-      // Just inform the user
       console.log(`   Cannot restore ${entry.path} (original hash: ${entry.original_hash})`);
     }
   }
 
-  // Remove manifest
   try { rmSync(join(target, '.orchestre', 'install-manifest.json')); } catch {}
-
   console.log(`\nUninstalled. ${removed} files removed.`);
 }
 
@@ -281,12 +200,33 @@ function uninstall(target) {
 function main() {
   const args = process.argv.slice(2);
 
+  // List available stacks
+  if (args.includes('--list-stacks')) {
+    const stacksDir = join(PKG_ROOT, 'stacks');
+    const stacks = readdirSync(stacksDir, { withFileTypes: true })
+      .filter(e => e.isDirectory())
+      .map(e => {
+        const sj = safeRead(join(stacksDir, e.name, 'stack.json'));
+        const name = sj ? JSON.parse(sj).name : e.name;
+        return `   ${e.name.padEnd(25)} ${name}`;
+      });
+    console.log('Available stacks:');
+    stacks.forEach(s => console.log(s));
+    return;
+  }
+
   const isGlobal = args.includes('--global');
   const isUninstall = args.includes('--uninstall');
   const stackIdx = args.indexOf('--stack');
   const stackName = stackIdx !== -1 ? args[stackIdx + 1] : 'nextjs-supabase';
 
-  // Determine target
+  // Validate stack exists
+  const stackDir = join(PKG_ROOT, 'stacks', stackName);
+  if (!existsSync(stackDir) || !existsSync(join(stackDir, 'stack.json'))) {
+    console.error(`Stack "${stackName}" not found. Run with --list-stacks to see available stacks.`);
+    process.exit(1);
+  }
+
   let target;
   if (isGlobal) {
     target = join(homedir(), '.claude');
@@ -295,81 +235,93 @@ function main() {
     target = resolve(positional[0] || '.');
   }
 
-  if (isUninstall) {
-    uninstall(target);
-    return;
-  }
+  if (isUninstall) { uninstall(target); return; }
 
-  console.log('Orchestre V2 — Smart Installer');
+  console.log('Orchestre V3 — Smart Installer');
   console.log(`   Target: ${target}`);
   console.log(`   Stack:  ${stackName}`);
   console.log('');
 
   const manifest = {
-    version: '2.0.0',
+    version: '3.0.0',
     stack: stackName,
     installed_at: new Date().toISOString(),
     files: [],
   };
 
-  // 1. Generate CLAUDE.md from stack manifest + template
+  // 1. Assemble CLAUDE.md from core/CLAUDE.base.md + stacks/{id}/CLAUDE.stack.md
   if (!isGlobal) {
-    generateClaudeMd(target, stackName, manifest);
-    console.log('   CLAUDE.md (generated from stack manifest)');
+    assembleClaudeMd(target, stackName, manifest);
+    console.log('   CLAUDE.md (assembled from core + stack)');
   }
 
-  // 2. Copy .claude/ (agents, rules, skills)
-  ensureDir(join(target, '.claude'));
-  const agentCount = copyDirTracked(join(PKG_ROOT, '.claude', 'agents'), join(target, '.claude', 'agents'), manifest);
-  const rulesCount = copyDirTracked(join(PKG_ROOT, '.claude', 'rules'), join(target, '.claude', 'rules'), manifest);
-  const skillsCount = copyDirTracked(join(PKG_ROOT, '.claude', 'skills'), join(target, '.claude', 'skills'), manifest);
-  console.log(`   .claude/ (${agentCount} agents, ${rulesCount} rules, ${skillsCount} skills)`);
+  // 2. Copy core/ (contracts, infrastructure, profiles, base hooks, knowledge)
+  copyDirTracked(join(PKG_ROOT, 'core', 'contracts'), join(target, 'core', 'contracts'), manifest);
+  copyDirTracked(join(PKG_ROOT, 'core', 'infrastructure'), join(target, 'core', 'infrastructure'), manifest);
+  copyDirTracked(join(PKG_ROOT, 'core', 'profiles'), join(target, 'core', 'profiles'), manifest);
+  copyDirTracked(join(PKG_ROOT, 'core', 'hooks'), join(target, 'core', 'hooks'), manifest);
+  copyDirTracked(join(PKG_ROOT, 'core', 'knowledge'), join(target, 'core', 'knowledge'), manifest);
+  console.log('   core/ (contracts, infrastructure, profiles, hooks, knowledge)');
 
-  // 3. Merge settings.json
+  // 3. Copy core agents -> .claude/agents/
+  ensureDir(join(target, '.claude'));
+  const agentCount = copyDirTracked(join(PKG_ROOT, 'core', 'agents'), join(target, '.claude', 'agents'), manifest);
+  console.log(`   .claude/agents/ (${agentCount} agents from core)`);
+
+  // 4. Copy stack-specific files
+  const stackSrc = join(PKG_ROOT, 'stacks', stackName);
+
+  // Stack hooks -> stacks/{id}/hooks/
+  const stackHooksCount = copyDirTracked(join(stackSrc, 'hooks'), join(target, 'stacks', stackName, 'hooks'), manifest);
+  console.log(`   stacks/${stackName}/hooks/ (${stackHooksCount} stack checkers)`);
+
+  // Stack knowledge -> stacks/{id}/knowledge/
+  const stackKnowledgeCount = copyDirTracked(join(stackSrc, 'knowledge'), join(target, 'stacks', stackName, 'knowledge'), manifest);
+  console.log(`   stacks/${stackName}/knowledge/ (${stackKnowledgeCount} library templates)`);
+
+  // Stack templates -> stacks/{id}/templates/
+  const stackTemplatesCount = copyDirTracked(join(stackSrc, 'templates'), join(target, 'stacks', stackName, 'templates'), manifest);
+  console.log(`   stacks/${stackName}/templates/ (${stackTemplatesCount} code templates)`);
+
+  // Stack env-templates -> stacks/{id}/env-templates/
+  copyDirTracked(join(stackSrc, 'env-templates'), join(target, 'stacks', stackName, 'env-templates'), manifest);
+
+  // Stack rules -> .claude/rules/
+  const rulesCount = copyDirTracked(join(stackSrc, 'rules'), join(target, '.claude', 'rules'), manifest);
+  console.log(`   .claude/rules/ (${rulesCount} stack rules)`);
+
+  // Stack config
+  copyTracked(join(stackSrc, 'stack.json'), join(target, 'stacks', stackName, 'stack.json'), manifest);
+
+  // 5. Copy skills
+  const skillsCount = copyDirTracked(join(PKG_ROOT, '.claude', 'skills'), join(target, '.claude', 'skills'), manifest);
+  console.log(`   .claude/skills/ (${skillsCount} skills)`);
+
+  // 6. Merge settings.json (hook commands point to core/hooks/)
   if (!isGlobal) {
     mergeSettings(target, manifest);
-    console.log('   .claude/settings.json (merged, not overwritten)');
+    console.log('   .claude/settings.json (merged)');
   }
 
-  // 4. Copy hooks (new Node.js system)
-  const hooksCount = copyDirTracked(join(PKG_ROOT, 'hooks'), join(target, 'hooks'), manifest);
-  console.log(`   hooks/ (${hooksCount} files — AST-based V2 guards)`);
-
-  // 5. Copy fixed-assets
-  const templatesCount = copyDirTracked(join(PKG_ROOT, 'fixed-assets'), join(target, 'fixed-assets'), manifest);
-  console.log(`   fixed-assets/ (${templatesCount} library templates)`);
-
-  // 6. Copy knowledge-base
-  const kbCount = copyDirTracked(join(PKG_ROOT, 'knowledge-base'), join(target, 'knowledge-base'), manifest);
-  console.log(`   knowledge-base/ (${kbCount} files)`);
-
-  // 7. Copy contracts, profiles, infrastructure, stacks
-  copyDirTracked(join(PKG_ROOT, 'contracts'), join(target, 'contracts'), manifest);
-  copyDirTracked(join(PKG_ROOT, 'profiles'), join(target, 'profiles'), manifest);
-  copyDirTracked(join(PKG_ROOT, 'infrastructure'), join(target, 'infrastructure'), manifest);
-  copyDirTracked(join(PKG_ROOT, 'stacks'), join(target, 'stacks'), manifest);
-  console.log('   contracts/ + profiles/ + infrastructure/ + stacks/');
-
-  // 8. Update .gitignore
+  // 7. Update .gitignore
   if (!isGlobal) {
     const gitignorePath = join(target, '.gitignore');
     const gitignore = safeRead(gitignorePath) || '';
     if (!gitignore.includes('.orchestre/')) {
-      const addition = '\n# Orchestre\n.orchestre/\n';
-      writeFileSync(gitignorePath, gitignore + addition);
+      writeFileSync(gitignorePath, gitignore + '\n# Orchestre\n.orchestre/\n');
     }
   }
 
-  // 9. Save manifest
+  // 8. Save manifest
   saveManifest(target, manifest);
 
   console.log('');
-  console.log(`Orchestre V2 installed! (${manifest.files.length} files, stack: ${stackName})`);
+  console.log(`Orchestre V3 installed! (${manifest.files.length} files, stack: ${stackName})`);
   console.log('');
   console.log('   Active NOW:');
-  console.log('   - CLAUDE.md — architecture rules, coding standards, security');
-  console.log('   - hooks/ — AST-based pre-write guards (zero false positives)');
-  console.log('   - contracts/ — JSON Schema validation for wave outputs');
+  console.log('   - CLAUDE.md — universal rules + stack-specific config');
+  console.log('   - core/hooks/ — universal guards (secrets)');
+  console.log(`   - stacks/${stackName}/hooks/ — stack-specific guards`);
   console.log('');
   console.log('   Available:');
   console.log('   - /orchestre-go "description" — generate a full project');

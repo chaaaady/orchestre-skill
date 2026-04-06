@@ -1,9 +1,19 @@
+# Orchestre runtime
 .orchestre/
-.orchestre/sessions/
-.orchestre/cost-tracker.json
+
+# Dependencies
 node_modules/
+
+# Environment
 .env
 .env.local
+.env.*.local
+
+# OS
 .DS_Store
-*.pyc
-__pycache__/
+Thumbs.db
+
+# Internal docs (not for public repo)
+ORCHESTRE-10-SUR-10.md
+Orchestre_Audit_Complet.docx
+AUDIT_REPORT_*.md

@@ -3,13 +3,13 @@
     "PreToolUse": [
       {
         "matcher": "Write|Edit",
-        "command": "node hooks/orchestre-guard.mjs --mode pre-write"
+        "command": "node core/hooks/orchestre-guard.mjs --mode pre-write"
       }
     ],
     "PostToolUse": [
       {
         "matcher": "Write|Edit",
-        "command": "node hooks/orchestre-guard.mjs --mode post-write"
+        "command": "node core/hooks/orchestre-guard.mjs --mode post-write"
       }
     ]
   }

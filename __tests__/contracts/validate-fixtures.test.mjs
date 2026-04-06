@@ -5,7 +5,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const schemasDir = join(__dirname, '..', '..', 'contracts', 'schemas');
+const schemasDir = join(__dirname, '..', '..', 'core', 'contracts', 'schemas');
 const fixturesDir = join(__dirname, '..', 'fixtures');
 
 // Inline the validator to avoid import issues

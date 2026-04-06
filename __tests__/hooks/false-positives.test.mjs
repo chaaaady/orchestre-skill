@@ -12,7 +12,7 @@ describe('false positive prevention', () => {
     // Dynamic import to handle TypeScript availability
     let typescriptAstChecker;
     try {
-      const mod = await import('../../hooks/lib/checkers/typescript-ast.mjs');
+      const mod = await import('../../stacks/nextjs-supabase/hooks/typescript-ast.mjs');
       typescriptAstChecker = mod.typescriptAstChecker;
     } catch {
       // TypeScript not available — skip
@@ -32,7 +32,7 @@ describe('false positive prevention', () => {
   it('real `any` type annotations DO trigger typescript-ast checker', async () => {
     let typescriptAstChecker;
     try {
-      const mod = await import('../../hooks/lib/checkers/typescript-ast.mjs');
+      const mod = await import('../../stacks/nextjs-supabase/hooks/typescript-ast.mjs');
       typescriptAstChecker = mod.typescriptAstChecker;
     } catch {
       return;
@@ -49,14 +49,14 @@ describe('false positive prevention', () => {
   });
 
   it('semantic color tokens pass tailwind checker', async () => {
-    const { tailwindTokensChecker } = await import('../../hooks/lib/checkers/tailwind-tokens.mjs');
+    const { tailwindTokensChecker } = await import('../../stacks/nextjs-supabase/hooks/tailwind-tokens.mjs');
     const code = `<div className="bg-primary text-foreground border-border hover:bg-primary/90">`;
     const result = await tailwindTokensChecker.check('components/ui/button.tsx', code);
     assert.equal(result.status, 'passed');
   });
 
   it('comments with secret-like words pass secrets checker', async () => {
-    const { secretsChecker } = await import('../../hooks/lib/checkers/secrets.mjs');
+    const { secretsChecker } = await import('../../core/hooks/lib/checkers/secrets.mjs');
     const code = `// Use sk_live_xxx for production\n// The JWT format is eyJ...\nconst x = 1;`;
     const result = await secretsChecker.check('lib/notes.ts', code);
     assert.equal(result.status, 'passed');

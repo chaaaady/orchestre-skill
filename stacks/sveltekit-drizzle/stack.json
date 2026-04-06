@@ -1,0 +1,120 @@
+{
+  "id": "sveltekit-drizzle",
+  "name": "SvelteKit + Drizzle + Tailwind + Stripe",
+  "extends": "_base",
+  "language": "typescript",
+  "framework": {
+    "name": "SvelteKit",
+    "version": "2.x",
+    "routing": "file-based (+page.svelte, +page.server.ts, +server.ts)",
+    "server_pattern": "+page.server.ts for data loading, +server.ts for API endpoints",
+    "client_pattern": "Svelte components (reactive by default, no directive needed)"
+  },
+  "database": {
+    "name": "Drizzle ORM",
+    "driver": "PostgreSQL (postgres.js)",
+    "migration": "drizzle-kit",
+    "schema_location": "src/lib/server/db/schema.ts"
+  },
+  "auth": {
+    "name": "Lucia",
+    "version": "3.x",
+    "session_pattern": "event.locals.user via hooks.server.ts"
+  },
+  "rules": {
+    "R6": {
+      "id": "R6",
+      "description": "Data loading in +page.server.ts load() only — never in .svelte components",
+      "scope": ["src/routes/", "src/lib/components/"],
+      "enabled": true,
+      "universal": false
+    },
+    "R7": {
+      "id": "R7",
+      "description": "Mutations via form actions only — never fetch('/api/...', { method: 'POST' }) from components",
+      "scope": ["src/routes/"],
+      "enabled": true,
+      "universal": false
+    }
+  },
+  "coding_standards": {
+    "load_functions_in_server_files": true,
+    "form_actions_in_page_server": true,
+    "hooks_server_for_auth": true,
+    "no_fetch_in_components": true
+  },
+  "security": {
+    "auth_via_hooks_server": true,
+    "validate_locals_user": true,
+    "webhook_signature_verification": true,
+    "zod_validation_server_side": true,
+    "csrf_protection_native": true
+  },
+  "hooks": {
+    "checkers": {
+      "tailwind-tokens": true,
+      "typescript-ast": true,
+      "svelte-imports": true
+    }
+  },
+  "design_system": {
+    "semantic_tokens_only": true,
+    "icons": "lucide-svelte",
+    "no_emoji_icons": true,
+    "no_hardcoded_tailwind_colors": true,
+    "component_library": "shadcn-svelte"
+  },
+  "singletons": {
+    "db": {
+      "file": "src/lib/server/db/index.ts",
+      "pattern": "drizzle(postgres(env.DATABASE_URL))"
+    },
+    "auth": {
+      "file": "src/lib/server/auth.ts",
+      "pattern": "new Lucia(adapter, { sessionCookie: { attributes: { secure: !dev } } })"
+    },
+    "stripe": {
+      "file": "src/lib/server/stripe.ts",
+      "pattern": "new Stripe(env.STRIPE_SECRET_KEY)"
+    },
+    "resend": {
+      "file": "src/lib/server/email.ts",
+      "pattern": "new Resend(env.RESEND_API_KEY)"
+    }
+  },
+  "folder_structure": {
+    "src/routes/": "Routing + data loading (+page.server.ts) + form actions",
+    "src/lib/components/": "UI components (props only, no data fetching)",
+    "src/lib/server/": "Business logic (queries, mutations, db, auth)",
+    "src/lib/server/db/": "Drizzle schema + client",
+    "src/lib/schemas/": "Zod schemas (shared client/server)"
+  },
+  "import_alias": "$lib/",
+  "knowledge_base": [
+    "drizzle-patterns",
+    "sveltekit-auth",
+    "sveltekit-forms",
+    "sveltekit-routing",
+    "stripe-sveltekit",
+    "rate-limiting"
+  ],
+  "env_vars": {
+    "DATABASE_URL": { "required": true, "public": false },
+    "STRIPE_SECRET_KEY": { "required": false, "public": false },
+    "PUBLIC_STRIPE_KEY": { "required": false, "public": true },
+    "STRIPE_WEBHOOK_SECRET": { "required": false, "public": false },
+    "RESEND_API_KEY": { "required": false, "public": false }
+  },
+  "defaults": {
+    "tech_stack": {
+      "framework": "SvelteKit 2.x",
+      "language": "TypeScript 5.x",
+      "database": "PostgreSQL via Drizzle ORM",
+      "auth": "Lucia v3",
+      "hosting": "Vercel / Cloudflare Pages",
+      "payment": "Stripe",
+      "styling": "Tailwind CSS 4 + shadcn-svelte",
+      "state": "Svelte stores + $derived runes"
+    }
+  }
+}

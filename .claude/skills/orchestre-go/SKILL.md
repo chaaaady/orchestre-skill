@@ -75,7 +75,7 @@ Afficher un résumé compact :
 │ Type : {type} ({secteur})               │
 │ Stack : {stack}                         │
 │ Features estimées : {N}                 │
-│ Poids : {micro|light|standard|heavy}    │
+│ Poids : {XS|S|M|L|XL}                  │
 │ Coût estimé : ~${cost} ({profile})      │
 │ Mode : {greenfield|brownfield}          │
 │                                         │

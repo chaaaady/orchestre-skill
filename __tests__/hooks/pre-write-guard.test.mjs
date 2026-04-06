@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { secretsChecker } from '../../hooks/lib/checkers/secrets.mjs';
-import { tailwindTokensChecker } from '../../hooks/lib/checkers/tailwind-tokens.mjs';
+import { secretsChecker } from '../../core/hooks/lib/checkers/secrets.mjs';
+import { tailwindTokensChecker } from '../../stacks/nextjs-supabase/hooks/tailwind-tokens.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => readFileSync(join(__dirname, '..', 'fixtures', name), 'utf8');
