@@ -234,15 +234,24 @@ mineurs:{count}
 
 Persist to memory: audit_score, grade, top_issues, remediation_plan.
 
-### Phase 9b: Mutation Score (critical paths)
+### Phase 9b: Mutation Score (OPT-IN — profile = premium only)
+
+> **This gate is opt-in.** It runs only when all three conditions are met:
+>   1. `profile === 'premium'` in the orchestre.lock (or `ORCHESTRE_MUTATION=1`)
+>   2. `@stryker-mutator/core` is installed in the target project
+>   3. `stryker.conf.json` exists in the target project
+>
+> Balanced / budget profiles keep the architecture-only score. This avoids
+> over-engineering for vibe coders on POC / MVP runs and respects the
+> CLAUDE.md rule "Scoring is a trap — architecture compliance is the point".
 
 For any task tagged `auth`, `billing`, `webhook`, or `crypto` — where the
-architecture score alone is misleading because weak tests pass high scores —
-run mutation tests and enforce category thresholds.
+architecture score alone is misleading because weak tests can pass high
+scores — run mutation tests and enforce category thresholds.
 
-Precondition: the target project has `@stryker-mutator/core` installed and a
-`stryker.conf.json` for that project. If absent: skip with a WARNING logged in
-`AUDIT_REPORT.md`, do NOT fail the wave.
+If the gate is not activated or preconditions are missing: log a one-line
+`INFO` in `AUDIT_REPORT.md` ("mutation score: skipped — profile standard"),
+do NOT fail the wave.
 
 ```
 import { parseStrykerReport, assertMutationScore, summary } from '@/core/runtime/mutation-score.mjs';
