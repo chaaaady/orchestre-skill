@@ -255,13 +255,14 @@ function main() {
     console.log('   CLAUDE.md (assembled from core + stack)');
   }
 
-  // 2. Copy core/ (contracts, infrastructure, profiles, base hooks, knowledge)
+  // 2. Copy core/ (contracts, infrastructure, profiles, base hooks, knowledge, runtime)
   copyDirTracked(join(PKG_ROOT, 'core', 'contracts'), join(target, 'core', 'contracts'), manifest);
   copyDirTracked(join(PKG_ROOT, 'core', 'infrastructure'), join(target, 'core', 'infrastructure'), manifest);
   copyDirTracked(join(PKG_ROOT, 'core', 'profiles'), join(target, 'core', 'profiles'), manifest);
   copyDirTracked(join(PKG_ROOT, 'core', 'hooks'), join(target, 'core', 'hooks'), manifest);
   copyDirTracked(join(PKG_ROOT, 'core', 'knowledge'), join(target, 'core', 'knowledge'), manifest);
-  console.log('   core/ (contracts, infrastructure, profiles, hooks, knowledge)');
+  copyDirTracked(join(PKG_ROOT, 'core', 'runtime'), join(target, 'core', 'runtime'), manifest);
+  console.log('   core/ (contracts, infrastructure, profiles, hooks, knowledge, runtime)');
 
   // 3. Copy core agents -> .claude/agents/
   ensureDir(join(target, '.claude'));
