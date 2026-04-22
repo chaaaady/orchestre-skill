@@ -105,6 +105,25 @@ for (const skill of requiredSkills) {
 console.log('\nKnowledge:');
 warn('core/knowledge/ exists', existsSync(join(target, 'core', 'knowledge')));
 
+// --- Runtime ---
+console.log('\nRuntime:');
+check('core/runtime/state-store.mjs exists', existsSync(join(target, 'core', 'runtime', 'state-store.mjs')));
+check('core/runtime/cost-tracker.mjs exists', existsSync(join(target, 'core', 'runtime', 'cost-tracker.mjs')));
+check('core/runtime/sandbox.mjs exists', existsSync(join(target, 'core', 'runtime', 'sandbox.mjs')));
+check('core/hooks/budget-guard.mjs exists', existsSync(join(target, 'core', 'hooks', 'budget-guard.mjs')));
+
+try {
+  const { detect } = await import(join(target, 'core', 'runtime', 'sandbox.mjs'));
+  const d = detect();
+  if (d.backend === 'none') {
+    warn(`Sandbox backend available (wave-3 will run unsandboxed)`, false, d.reason);
+  } else {
+    check(`Sandbox backend: ${d.backend} (${d.path})`, true);
+  }
+} catch {
+  warn('Sandbox detection', false, 'core/runtime/sandbox.mjs failed to import');
+}
+
 // --- Summary ---
 console.log('\n' + '─'.repeat(40));
 console.log(`\n  Passed:   ${passed}`);

@@ -15,8 +15,20 @@
 - Vérifier cost-tracker.json AVANT chaque feature. Si budget dépassé → AskUserQuestion.
 
 ## PERMISSION CONTEXT
-- **allow**: ALL
+- **allow**: ALL (within sandbox — see RUNTIME SANDBOX below)
 - Hooks pre-write actifs pour validation design tokens + architecture R1-R8
+- Hook PostToolUse `budget-guard.mjs` actif — kill la wave si budget > 120%
+
+## RUNTIME SANDBOX (default ON)
+Wave 3 s'exécute dans un sandbox OS-level via `core/runtime/sandbox.mjs`.
+Backends : Seatbelt (macOS) / bubblewrap (Linux). Fallback = exécution directe avec WARNING.
+
+- **Read** : projet entier en read-only
+- **Write** : uniquement sous `src/`, `app/`, `lib/`, `components/`, `actions/`, `pages/`, `public/`, `.orchestre/state/`
+- **Network** : bloqué par défaut (localhost uniquement). `allowNetwork=true` si feature nécessite egress
+
+Si `detect().backend === 'none'` : warning explicite + l'agent demande à l'user via AskUserQuestion :
+"Pas de sandbox disponible. Continuer sans isolation ? (Y/N)". Default N en mode non-interactif.
 ## MISSION
 
 Generate INIT prompt + all feature prompts. Orchestrate parallel feature generation via sub-agents in isolated worktrees. Produce all documentation, run Doctor checks, generate AI_BUNDLE.json.
