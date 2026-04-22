@@ -109,8 +109,8 @@ function copyDirTracked(srcDir, destDir, manifest) {
 
 // --- Settings merge ---
 
-function mergeSettings(target, manifest) {
-  const settingsPath = join(target, '.claude', 'settings.json');
+function mergeSettings(target, manifest, { claudeSub = '.claude' } = {}) {
+  const settingsPath = join(target, claudeSub, 'settings.json');
 
   const v2Hooks = {
     hooks: {
@@ -235,6 +235,10 @@ function main() {
     target = resolve(positional[0] || '.');
   }
 
+  // In global mode, target IS already the Claude Code dir — no nested .claude/.
+  // In project mode, Claude Code assets go under target/.claude/.
+  const claudeSub = isGlobal ? '' : '.claude';
+
   if (isUninstall) { uninstall(target); return; }
 
   console.log('Orchestre V3 — Smart Installer');
@@ -264,10 +268,10 @@ function main() {
   copyDirTracked(join(PKG_ROOT, 'core', 'runtime'), join(target, 'core', 'runtime'), manifest);
   console.log('   core/ (contracts, infrastructure, profiles, hooks, knowledge, runtime)');
 
-  // 3. Copy core agents -> .claude/agents/
-  ensureDir(join(target, '.claude'));
-  const agentCount = copyDirTracked(join(PKG_ROOT, 'core', 'agents'), join(target, '.claude', 'agents'), manifest);
-  console.log(`   .claude/agents/ (${agentCount} agents from core)`);
+  // 3. Copy core agents -> agents/ (global) or .claude/agents/ (project)
+  ensureDir(join(target, claudeSub));
+  const agentCount = copyDirTracked(join(PKG_ROOT, 'core', 'agents'), join(target, claudeSub, 'agents'), manifest);
+  console.log(`   ${claudeSub ? '.claude/' : ''}agents/ (${agentCount} agents from core)`);
 
   // 4. Copy stack-specific files
   const stackSrc = join(PKG_ROOT, 'stacks', stackName);
@@ -287,22 +291,20 @@ function main() {
   // Stack env-templates -> stacks/{id}/env-templates/
   copyDirTracked(join(stackSrc, 'env-templates'), join(target, 'stacks', stackName, 'env-templates'), manifest);
 
-  // Stack rules -> .claude/rules/
-  const rulesCount = copyDirTracked(join(stackSrc, 'rules'), join(target, '.claude', 'rules'), manifest);
-  console.log(`   .claude/rules/ (${rulesCount} stack rules)`);
+  // Stack rules -> rules/ (global) or .claude/rules/ (project)
+  const rulesCount = copyDirTracked(join(stackSrc, 'rules'), join(target, claudeSub, 'rules'), manifest);
+  console.log(`   ${claudeSub ? '.claude/' : ''}rules/ (${rulesCount} stack rules)`);
 
   // Stack config
   copyTracked(join(stackSrc, 'stack.json'), join(target, 'stacks', stackName, 'stack.json'), manifest);
 
   // 5. Copy skills
-  const skillsCount = copyDirTracked(join(PKG_ROOT, '.claude', 'skills'), join(target, '.claude', 'skills'), manifest);
-  console.log(`   .claude/skills/ (${skillsCount} skills)`);
+  const skillsCount = copyDirTracked(join(PKG_ROOT, '.claude', 'skills'), join(target, claudeSub, 'skills'), manifest);
+  console.log(`   ${claudeSub ? '.claude/' : ''}skills/ (${skillsCount} skills)`);
 
   // 6. Merge settings.json (hook commands point to core/hooks/)
-  if (!isGlobal) {
-    mergeSettings(target, manifest);
-    console.log('   .claude/settings.json (merged)');
-  }
+  mergeSettings(target, manifest, { claudeSub });
+  console.log(`   ${claudeSub ? '.claude/' : ''}settings.json (merged)`);
 
   // 7. Update .gitignore
   if (!isGlobal) {
