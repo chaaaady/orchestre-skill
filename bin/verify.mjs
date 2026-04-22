@@ -111,6 +111,9 @@ check('core/runtime/state-store.mjs exists', existsSync(join(target, 'core', 'ru
 check('core/runtime/cost-tracker.mjs exists', existsSync(join(target, 'core', 'runtime', 'cost-tracker.mjs')));
 check('core/runtime/sandbox.mjs exists', existsSync(join(target, 'core', 'runtime', 'sandbox.mjs')));
 check('core/hooks/budget-guard.mjs exists', existsSync(join(target, 'core', 'hooks', 'budget-guard.mjs')));
+check('core/hooks/permission-guard.mjs exists', existsSync(join(target, 'core', 'hooks', 'permission-guard.mjs')));
+check('core/runtime/turn-loop.mjs exists', existsSync(join(target, 'core', 'runtime', 'turn-loop.mjs')));
+check('core/runtime/permission-context.mjs exists', existsSync(join(target, 'core', 'runtime', 'permission-context.mjs')));
 
 try {
   const { detect } = await import(join(target, 'core', 'runtime', 'sandbox.mjs'));
