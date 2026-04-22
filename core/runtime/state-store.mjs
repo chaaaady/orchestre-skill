@@ -110,7 +110,14 @@ function reduce(state, event) {
     next.turnCount = (state.turnCount || 0) + 1;
     if (event.wave !== undefined) {
       const w = next.byWave[event.wave] || { turns: 0, cost_usd: 0, tokens_in: 0, tokens_out: 0 };
-      next.byWave[event.wave] = { ...w, turns: w.turns + 1 };
+      const tIn = Number(event.data?.tokens_in) || 0;
+      const tOut = Number(event.data?.tokens_out) || 0;
+      next.byWave[event.wave] = {
+        ...w,
+        turns: w.turns + 1,
+        tokens_in: (w.tokens_in || 0) + tIn,
+        tokens_out: (w.tokens_out || 0) + tOut,
+      };
     }
   }
 
