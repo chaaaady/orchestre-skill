@@ -112,13 +112,25 @@ function copyDirTracked(srcDir, destDir, manifest) {
 function mergeSettings(target, manifest, { claudeSub = '.claude' } = {}) {
   const settingsPath = join(target, claudeSub, 'settings.json');
 
+  // Claude Code hook schema: matcher + hooks array of { type, command }
+  // https://code.claude.com/docs/en/hooks
   const v2Hooks = {
     hooks: {
       PreToolUse: [
-        { matcher: "Write|Edit", command: "node core/hooks/orchestre-guard.mjs --mode pre-write" }
+        {
+          matcher: "Write|Edit",
+          hooks: [
+            { type: "command", command: "node core/hooks/orchestre-guard.mjs --mode pre-write" }
+          ]
+        }
       ],
       PostToolUse: [
-        { matcher: "Write|Edit", command: "node core/hooks/orchestre-guard.mjs --mode post-write" }
+        {
+          matcher: "Write|Edit",
+          hooks: [
+            { type: "command", command: "node core/hooks/orchestre-guard.mjs --mode post-write" }
+          ]
+        }
       ]
     }
   };

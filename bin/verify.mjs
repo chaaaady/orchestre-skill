@@ -58,11 +58,21 @@ if (settingsExists) {
   try {
     const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
     const preToolUse = settings?.hooks?.PreToolUse || [];
-    const hasPreWrite = preToolUse.some(h => h.command?.includes('orchestre-guard') && h.command?.includes('pre-write'));
+
+    // Claude Code hook schema: matcher entry has a `hooks` array of {type, command}.
+    // Tolerate the legacy flat-command shape too so older installs still report cleanly.
+    function commandsOf(entry) {
+      if (Array.isArray(entry?.hooks)) return entry.hooks.map(h => h?.command).filter(Boolean);
+      if (entry?.command) return [entry.command];
+      return [];
+    }
+
+    const allPreCommands = preToolUse.flatMap(commandsOf);
+    const hasPreWrite = allPreCommands.some(c => c.includes('orchestre-guard') && c.includes('pre-write'));
     check('Pre-write hook configured', hasPreWrite, 'settings.json missing orchestre-guard pre-write hook');
 
     if (hasPreWrite) {
-      const cmd = preToolUse.find(h => h.command?.includes('pre-write'))?.command || '';
+      const cmd = allPreCommands.find(c => c.includes('pre-write')) || '';
       const guardPath = cmd.replace('node ', '').replace(' --mode pre-write', '').trim();
       check('Hook path resolves', existsSync(join(target, guardPath)), `File not found: ${guardPath}. Check the path in settings.json`);
     }
