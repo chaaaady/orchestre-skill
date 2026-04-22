@@ -234,6 +234,38 @@ mineurs:{count}
 
 Persist to memory: audit_score, grade, top_issues, remediation_plan.
 
+### Phase 9b: Mutation Score (critical paths)
+
+For any task tagged `auth`, `billing`, `webhook`, or `crypto` — where the
+architecture score alone is misleading because weak tests pass high scores —
+run mutation tests and enforce category thresholds.
+
+Precondition: the target project has `@stryker-mutator/core` installed and a
+`stryker.conf.json` for that project. If absent: skip with a WARNING logged in
+`AUDIT_REPORT.md`, do NOT fail the wave.
+
+```
+import { parseStrykerReport, assertMutationScore, summary } from '@/core/runtime/mutation-score.mjs';
+
+const report = parseStrykerReport('reports/mutation/mutation.json');
+const s = summary(report);
+
+// Defaults:
+//   critical (auth/billing/webhook/crypto/rls) ≥ 70 %
+//   standard                                    ≥ 50 %
+//   experimental/.draft/.sandbox                ≥ 30 %
+try {
+  assertMutationScore(report, { projectRoot, wave: 4, label: 'final-audit' });
+} catch (err) {
+  // err.category + err.score + err.label identify the failing file.
+  // Surface in AUDIT_REPORT.md as CRITIQUE with the failing file paths.
+}
+```
+
+Report must present **two scores**: `architecture_score / 100` (compliance)
+AND `mutation_score %` (test effectiveness). Both required for critical paths;
+standard paths can ship with architecture-only if mutation harness is missing.
+
 ### Phase 10: Feed Procedural Memory
 
 For each CRITIQUE or IMPORTANT finding that represents a pattern (not a one-off

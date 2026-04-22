@@ -96,7 +96,10 @@
     "sveltekit-forms",
     "sveltekit-routing",
     "stripe-sveltekit",
-    "rate-limiting"
+    "rate-limiting",
+    "sentry-sveltekit",
+    "resend-sveltekit",
+    "tanstack-query-svelte"
   ],
   "env_vars": {
     "DATABASE_URL": { "required": true, "public": false },
