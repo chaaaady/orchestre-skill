@@ -29,7 +29,7 @@ By day 2, adding a feature breaks everything.
 
 The code compiles — but it's a monolith with `any` types, hardcoded colors, DB calls in components, unhandled errors, and no separation of concerns. You're not building software. You're accumulating technical debt at the speed of an LLM.
 
-**Orchestre fixes this at the source.** Instead of auditing after the fact, it intercepts every file write with AST-based hooks and enforces clean architecture in real time — before the code reaches disk.
+**Orchestre fixes this at the source.** Instead of auditing after the fact, it intercepts every file write with pre-write hooks — AST for TypeScript architecture (`any`, `throw` in `lib/`, DB calls in UI), regex for lexical patterns (secrets, hardcoded colors, import paths). Clean architecture enforced in real time, before code reaches disk.
 
 ---
 
@@ -65,7 +65,7 @@ Orchestre operates at two levels:
 
 Loaded into every Claude Code or Cursor session. Zero config.
 
-**Pre-write hooks** analyze every file before it's saved — using the TypeScript compiler API, not regex. They block violations in real time:
+**Pre-write hooks** analyze every file before it's saved. AST (TypeScript compiler API) for architecture rules; regex for lexical patterns (secrets, color tokens, import paths) where regex is the appropriate tool. They block violations in real time:
 
 | Check | ID | Catches |
 |-------|----|---------|
@@ -94,7 +94,7 @@ Launch with `/orchestre-go "build a SaaS for X"` to get a full pipeline:
    read-only      read-only       read-only       execute        read-only
 ```
 
-Each wave is a **separate Claude Code agent** with its own memory, tool restrictions, and token budget. No prompt debt. No infinite loops. Features without mutual dependencies execute in parallel via git worktrees.
+Each wave is a **separate Claude Code agent** with its own memory, tool restrictions, and token budget. Turn-loop limits (`max_turns`, `max_budget_tokens`) and per-wave permission gates are enforced at runtime via `core/runtime/` (state store, cost tracker, budget kill-switch, permission guard, sandbox). Budget overruns trigger a clean kill with full state persisted for resume. Features without mutual dependencies execute in parallel via git worktrees.
 
 ---
 

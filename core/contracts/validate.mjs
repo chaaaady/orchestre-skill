@@ -141,43 +141,50 @@ function listSchemas() {
   }
 }
 
-// Main
-const [,, schemaName, jsonFile] = process.argv;
-
-if (!schemaName || !jsonFile) {
-  console.error('Usage: node contracts/validate.mjs <schema-name> <json-file>');
-  console.error(`Available schemas: ${listSchemas().join(', ') || '(none found)'}`);
-  process.exit(1);
+function loadSchema(schemaName) {
+  const schemaPath = join(__dirname, 'schemas', `${schemaName}.schema.json`);
+  return JSON.parse(readFileSync(schemaPath, 'utf8'));
 }
 
-const schemaPath = join(__dirname, 'schemas', `${schemaName}.schema.json`);
+export { SchemaValidator, listSchemas, loadSchema };
 
-let schema, data;
-try {
-  schema = JSON.parse(readFileSync(schemaPath, 'utf8'));
-} catch (err) {
-  console.error(`Failed to load schema "${schemaName}": ${err.message}`);
-  console.error(`Available schemas: ${listSchemas().join(', ')}`);
-  process.exit(1);
-}
+// CLI entry — only when invoked directly
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const [,, schemaName, jsonFile] = process.argv;
 
-try {
-  data = JSON.parse(readFileSync(jsonFile, 'utf8'));
-} catch (err) {
-  console.error(`Failed to load JSON file "${jsonFile}": ${err.message}`);
-  process.exit(1);
-}
-
-const validator = new SchemaValidator(schema);
-const result = validator.validate(data);
-
-if (result.valid) {
-  console.log(`✓ ${jsonFile} is valid against ${schemaName}`);
-  process.exit(0);
-} else {
-  console.error(`✗ ${jsonFile} failed validation against ${schemaName}:`);
-  for (const err of result.errors) {
-    console.error(`  ${err.path || '(root)'}: ${err.message}`);
+  if (!schemaName || !jsonFile) {
+    console.error('Usage: node contracts/validate.mjs <schema-name> <json-file>');
+    console.error(`Available schemas: ${listSchemas().join(', ') || '(none found)'}`);
+    process.exit(1);
   }
-  process.exit(1);
+
+  let schema, data;
+  try {
+    schema = loadSchema(schemaName);
+  } catch (err) {
+    console.error(`Failed to load schema "${schemaName}": ${err.message}`);
+    console.error(`Available schemas: ${listSchemas().join(', ')}`);
+    process.exit(1);
+  }
+
+  try {
+    data = JSON.parse(readFileSync(jsonFile, 'utf8'));
+  } catch (err) {
+    console.error(`Failed to load JSON file "${jsonFile}": ${err.message}`);
+    process.exit(1);
+  }
+
+  const validator = new SchemaValidator(schema);
+  const result = validator.validate(data);
+
+  if (result.valid) {
+    console.log(`✓ ${jsonFile} is valid against ${schemaName}`);
+    process.exit(0);
+  } else {
+    console.error(`✗ ${jsonFile} failed validation against ${schemaName}:`);
+    for (const err of result.errors) {
+      console.error(`  ${err.path || '(root)'}: ${err.message}`);
+    }
+    process.exit(1);
+  }
 }
