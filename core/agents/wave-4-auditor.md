@@ -234,6 +234,34 @@ mineurs:{count}
 
 Persist to memory: audit_score, grade, top_issues, remediation_plan.
 
+### Phase 10: Feed Procedural Memory
+
+For each CRITIQUE or IMPORTANT finding that represents a pattern (not a one-off
+bug), record a rejection so Orchestre learns across runs.
+
+```
+import { recordRejection, updateLearnedPatternsFile } from '@/core/runtime/memory.mjs';
+
+for (const finding of report.critiques.concat(report.importants)) {
+  if (!finding.pattern) continue; // skip one-off bugs without a generalizable pattern
+  recordRejection(projectRoot, {
+    pattern: finding.pattern,               // e.g. 'db-in-component', 'any-type-in-api'
+    context: finding.file_path || null,     // e.g. 'app/dashboard/page.tsx'
+    reason: finding.fix_suggestion || null, // e.g. 'use lib/queries/ with Result<T>'
+    wave: 4,
+    source: 'wave-4-auditor',
+  });
+}
+
+// After all rejections for this wave are logged, refresh the learned-patterns file.
+// Patterns rejected >= 3 times across runs surface in core/memory/learned-patterns.md.
+updateLearnedPatternsFile(repoRoot, projectRoot, { threshold: 3 });
+```
+
+Wave 2 (planner) and Wave 3 (generator) read `core/memory/learned-patterns.md`
+at their start. Over time, Orchestre stops proposing patterns that have been
+rejected repeatedly. Zero new UX — it compounds silently.
+
 ### Additional V2 Quality Checks
 
 #### Test File Existence
