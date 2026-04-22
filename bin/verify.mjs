@@ -117,6 +117,7 @@ check('core/runtime/permission-context.mjs exists', existsSync(join(target, 'cor
 check('core/runtime/contract-guard.mjs exists', existsSync(join(target, 'core', 'runtime', 'contract-guard.mjs')));
 check('core/runtime/memory.mjs exists', existsSync(join(target, 'core', 'runtime', 'memory.mjs')));
 check('core/runtime/plan-gate.mjs exists', existsSync(join(target, 'core', 'runtime', 'plan-gate.mjs')));
+check('core/runtime/mutation-score.mjs exists', existsSync(join(target, 'core', 'runtime', 'mutation-score.mjs')));
 
 try {
   const { detect } = await import(join(target, 'core', 'runtime', 'sandbox.mjs'));
