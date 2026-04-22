@@ -278,6 +278,32 @@ wall_clock_hours:8
 estimated_cost:$4.50
 ```
 
+### Phase X — Plan Gate (BEFORE writing WAVE_2_DONE)
+
+Invoke `core/runtime/plan-gate.mjs` to checkpoint the plan with the user before
+Wave 3 starts. This catches bad plans cheaply (10s human review vs. burning
+tokens on a flawed Wave 3).
+
+```
+import { evaluate } from '@/core/runtime/plan-gate.mjs';
+
+const result = evaluate(projectRoot, plan);
+// result.prompt → display via AskUserQuestion
+// result.decision ∈ { 'go', 'replan', 'abort' }
+```
+
+Flow:
+1. Build `summary` from `plan.json`
+2. Show `summary.prompt` via `AskUserQuestion` — user answers ENTER / R / X
+3. Feed the answer back as `evaluate(..., { answer })`
+4. If `decision === 'go'`  → write WAVE_2_DONE
+5. If `decision === 'replan'` → iterate Wave 2 planning once more
+6. If `decision === 'abort'` → append `wave_end` with `stop_reason: 'user_abort'` and stop
+
+**Non-interactive runs** (CI, headless, `ORCHESTRE_NO_GATE=1`): the gate
+auto-approves with `decision='go'` but still persists a `plan_gate_decision`
+event so audits see it ran.
+
 ## RULES
 
 1. **NEVER** allow file conflicts between tasks (2+ tasks writing same file).
