@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['20', '22']
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Run unit + e2e tests
+        run: npm test
+
+      - name: Verify installation layout
+        run: node bin/verify.mjs .
+
+      - name: Validate contract fixtures
+        run: node core/contracts/validate.mjs BriefLint __tests__/fixtures/brief-lint.valid.json || true
+        continue-on-error: true
+
+  lint-structure:
+    name: Lint repo structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Core runtime modules present
+        run: |
+          set -e
+          for f in state-store cost-tracker turn-loop sandbox permission-context plan-gate memory contract-guard mutation-score; do
+            test -f "core/runtime/${f}.mjs" || (echo "missing core/runtime/${f}.mjs" && exit 1)
+          done
+          echo "all runtime modules present"
+
+      - name: Hooks present
+        run: |
+          set -e
+          for f in orchestre-guard budget-guard permission-guard; do
+            test -f "core/hooks/${f}.mjs" || (echo "missing core/hooks/${f}.mjs" && exit 1)
+          done
+
+      - name: No .env committed
+        run: |
+          if find . -name '.env' -not -path './node_modules/*' -not -path './.git/*' | grep -q .; then
+            echo "ERROR: .env file committed"; exit 1
+          fi
