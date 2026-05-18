@@ -11,9 +11,11 @@
 
 <p align="center">
   <a href="https://github.com/chaaaady/orchestre/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT License" /></a>
-  <img src="https://img.shields.io/badge/tests-166_passing-brightgreen" alt="166 tests passing" />
+  <img src="https://img.shields.io/badge/version-4.0.1-blue" alt="v4.0.1" />
+  <img src="https://img.shields.io/badge/tests-345_passing-brightgreen" alt="345 tests passing" />
   <img src="https://img.shields.io/badge/hooks-17_checks-orange" alt="17 hook checks" />
   <img src="https://img.shields.io/badge/stacks-2-blueviolet" alt="2 stacks" />
+  <img src="https://img.shields.io/badge/validator-Ajv_2020--12-purple" alt="Ajv 2020-12" />
 </p>
 
 <p align="center">
