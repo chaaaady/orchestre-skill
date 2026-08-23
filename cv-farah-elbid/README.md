@@ -37,3 +37,20 @@ Tout le contenu éditorial vit dans `lib/data/cv.ts` : modifier ce fichier suffi
 ## Déploiement
 
 Le site est entièrement statique : déployable sur Vercel (`vercel --prod`), Netlify ou tout hébergeur Node.
+
+## Tester sur téléphone (même Wi-Fi)
+
+```bash
+npm run dev:lan          # expose le serveur sur le réseau local (port 3000)
+```
+
+Récupérer l'IP locale de la machine :
+
+| OS | Commande |
+|----|----------|
+| macOS | `ipconfig getifaddr en0` (Wi-Fi) ou `en1` |
+| Linux | `hostname -I \| awk '{print $1}'` |
+| Windows | `ipconfig` → « Adresse IPv4 » de la carte Wi-Fi |
+
+Puis ouvrir `http://<IP>:3000` sur le téléphone (ex. `http://192.168.1.24:3000`).
+Le téléphone doit être sur le même réseau Wi-Fi, et le pare-feu doit autoriser le port 3000.
