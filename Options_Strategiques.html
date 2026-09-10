@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Options stratégiques — Orchestre</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0f1218; --panel:#171b25; --border:#252a37; --text:#e8ecf4; --muted:#8b94a8;
+    --accent:#7c9eff; --good:#5ac997; --mid:#f5b86c; --bad:#e26d6d; --gold:#f5c563;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;line-height:1.55}
+  .wrap{max-width:1200px;margin:0 auto;padding:48px 32px}
+  header{margin-bottom:48px}
+  h1{font-size:32px;font-weight:700;margin:0 0 8px;letter-spacing:-0.02em}
+  .sub{color:var(--muted);font-size:15px;margin:0}
+  h2{font-size:20px;font-weight:600;margin:48px 0 20px;letter-spacing:-0.01em;border-bottom:1px solid var(--border);padding-bottom:12px}
+  h3{font-size:15px;font-weight:600;margin:0 0 10px}
+
+  /* Summary matrix */
+  .matrix{width:100%;border-collapse:collapse;font-size:13px;background:var(--panel);border-radius:10px;overflow:hidden}
+  .matrix th,.matrix td{padding:10px 12px;text-align:center;border-bottom:1px solid var(--border)}
+  .matrix th{background:#1d2230;font-weight:600;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:0.03em}
+  .matrix th:first-child,.matrix td:first-child{text-align:left;padding-left:16px;font-weight:500}
+  .matrix td:last-child,.matrix th:last-child{padding-right:16px}
+  .matrix tbody tr:last-child td{border-bottom:none}
+  .matrix tbody tr:hover{background:#1d2230}
+  .score{display:inline-block;min-width:28px;padding:3px 8px;border-radius:5px;font-weight:600;font-size:12px;font-variant-numeric:tabular-nums}
+  .s-hi{background:rgba(90,201,151,0.15);color:var(--good)}
+  .s-mi{background:rgba(245,184,108,0.15);color:var(--mid)}
+  .s-lo{background:rgba(226,109,109,0.15);color:var(--bad)}
+  .total{font-weight:700;font-size:14px;font-variant-numeric:tabular-nums}
+  .medal{display:inline-block;width:22px;height:22px;border-radius:50%;text-align:center;line-height:22px;font-size:12px;font-weight:700;margin-right:8px;vertical-align:middle}
+  .m-1{background:#f5c56333;color:var(--gold);border:1px solid var(--gold)}
+  .m-2{background:#c0c7d833;color:#c0c7d8;border:1px solid #c0c7d8}
+  .m-3{background:#cd7f3233;color:#cd7f32;border:1px solid #cd7f32}
+
+  /* Chart */
+  .chart-box{background:var(--panel);border-radius:12px;padding:28px;border:1px solid var(--border)}
+  .chart-legend{display:flex;gap:24px;flex-wrap:wrap;margin-top:20px;padding-top:20px;border-top:1px solid var(--border);font-size:13px;color:var(--muted)}
+  .legend-item{display:flex;align-items:center;gap:8px}
+  .legend-dot{width:12px;height:12px;border-radius:50%}
+
+  /* Cards */
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:20px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:22px;transition:transform 0.15s,border-color 0.15s}
+  .card:hover{transform:translateY(-2px);border-color:#333a4d}
+  .card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;gap:12px}
+  .card-rank{flex-shrink:0;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;background:#1d2230;border:1px solid var(--border)}
+  .card-rank.winner{background:#f5c56322;border-color:var(--gold);color:var(--gold)}
+  .card-title{font-weight:600;font-size:16px;margin:0 0 4px}
+  .card-pitch{color:var(--muted);font-size:13px;margin:0}
+  .card-score{display:flex;align-items:baseline;gap:6px;margin:14px 0;padding:10px 14px;background:#1d2230;border-radius:8px}
+  .card-score-val{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-0.02em}
+  .card-score-lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.05em}
+  .pc{display:grid;grid-template-columns:1fr;gap:12px;font-size:13px}
+  .pc-block{display:flex;gap:10px;align-items:flex-start}
+  .pc-label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;min-width:68px;padding-top:2px}
+  .pc-content{flex:1;color:#c9d1e3;font-size:13px}
+  .meta{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-top:14px;padding-top:14px;border-top:1px solid var(--border);flex-wrap:wrap}
+  .meta-item{display:flex;align-items:center;gap:4px}
+  .meta-val{color:var(--text);font-weight:500}
+
+  /* Verdict */
+  .verdict{background:linear-gradient(135deg,#1d2230 0%,#252a37 100%);border:1px solid var(--gold);border-radius:12px;padding:28px;margin-top:32px}
+  .verdict h2{margin:0 0 14px;border:none;padding:0;color:var(--gold)}
+  .verdict p{margin:0 0 10px;color:#c9d1e3}
+  .verdict strong{color:var(--text)}
+
+  /* Method */
+  .method{font-size:12px;color:var(--muted);background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:14px 18px;margin-top:24px}
+  .method strong{color:var(--text)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>Options stratégiques Orchestre</h1>
+  <p class="sub">Scoring sur 8 critères / 10 · Score pondéré final / 10 · Du statu quo à la thèse "Cognitive OS"</p>
+</header>
+
+<h2>Matrice comparée</h2>
+<table class="matrix">
+<thead>
+<tr>
+  <th>Option</th>
+  <th>Complexité<br><span style="font-weight:400;font-size:10px">(10 = facile)</span></th>
+  <th>Marché</th>
+  <th>Moat</th>
+  <th>Plafond<br>stars</th>
+  <th>Revenue</th>
+  <th>WOW</th>
+  <th>Time-to-<br>traction</th>
+  <th>Proba<br>succès</th>
+  <th>Score<br>final</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <td>1. Statu quo (skill Claude Code)</td>
+  <td><span class="score s-hi">10</span></td>
+  <td><span class="score s-lo">3</span></td>
+  <td><span class="score s-lo">2</span></td>
+  <td><span class="score s-lo">4</span></td>
+  <td><span class="score s-lo">1</span></td>
+  <td><span class="score s-lo">2</span></td>
+  <td><span class="score s-hi">9</span></td>
+  <td><span class="score s-mi">7</span></td>
+  <td class="total" style="color:var(--bad)">4.2</td>
+</tr>
+<tr>
+  <td>2. CLI autonome (Aider-like)</td>
+  <td><span class="score s-mi">6</span></td>
+  <td><span class="score s-mi">7</span></td>
+  <td><span class="score s-mi">5</span></td>
+  <td><span class="score s-mi">7</span></td>
+  <td><span class="score s-lo">4</span></td>
+  <td><span class="score s-mi">5</span></td>
+  <td><span class="score s-mi">5</span></td>
+  <td><span class="score s-mi">5</span></td>
+  <td class="total" style="color:var(--mid)">5.4</td>
+</tr>
+<tr>
+  <td>3. Governance runtime B2B</td>
+  <td><span class="score s-mi">5</span></td>
+  <td><span class="score s-hi">8</span></td>
+  <td><span class="score s-hi">8</span></td>
+  <td><span class="score s-mi">7</span></td>
+  <td><span class="score s-hi">9</span></td>
+  <td><span class="score s-mi">7</span></td>
+  <td><span class="score s-lo">3</span></td>
+  <td><span class="score s-mi">5</span></td>
+  <td class="total" style="color:var(--good)">6.8</td>
+</tr>
+<tr>
+  <td>4. Compliance-grade vertical</td>
+  <td><span class="score s-mi">7</span></td>
+  <td><span class="score s-mi">5</span></td>
+  <td><span class="score s-mi">7</span></td>
+  <td><span class="score s-lo">4</span></td>
+  <td><span class="score s-hi">8</span></td>
+  <td><span class="score s-mi">5</span></td>
+  <td><span class="score s-mi">6</span></td>
+  <td><span class="score s-mi">7</span></td>
+  <td class="total" style="color:var(--mid)">6.3</td>
+</tr>
+<tr style="background:rgba(245,197,99,0.05)">
+  <td><span class="medal m-1">1</span><strong>5. Cognitive OS (runtime cognitif)</strong></td>
+  <td><span class="score s-mi">5</span></td>
+  <td><span class="score s-hi">10</span></td>
+  <td><span class="score s-hi">9</span></td>
+  <td><span class="score s-hi">9</span></td>
+  <td><span class="score s-hi">8</span></td>
+  <td><span class="score s-hi">9</span></td>
+  <td><span class="score s-lo">4</span></td>
+  <td><span class="score s-lo">4</span></td>
+  <td class="total" style="color:var(--gold)">7.5</td>
+</tr>
+<tr>
+  <td>6. Micro-produit (Ship-Stripe-60min)</td>
+  <td><span class="score s-hi">8</span></td>
+  <td><span class="score s-lo">4</span></td>
+  <td><span class="score s-lo">3</span></td>
+  <td><span class="score s-lo">3</span></td>
+  <td><span class="score s-mi">6</span></td>
+  <td><span class="score s-lo">2</span></td>
+  <td><span class="score s-hi">9</span></td>
+  <td><span class="score s-mi">7</span></td>
+  <td class="total" style="color:var(--mid)">5.0</td>
+</tr>
+</tbody>
+</table>
+
+<h2>Radar comparatif — top 3</h2>
+<div class="chart-box">
+  <canvas id="radar" height="340"></canvas>
+  <div class="chart-legend">
+    <div class="legend-item"><span class="legend-dot" style="background:#f5c563"></span>Cognitive OS (7.5)</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#5ac997"></span>Governance B2B (6.8)</div>
+    <div class="legend-item"><span class="legend-dot" style="background:#7c9eff"></span>Compliance vertical (6.3)</div>
+  </div>
+</div>
+
+<h2>Les 6 options en détail</h2>
+<div class="grid">
+
+<div class="card">
+  <div class="card-top">
+    <div>
+      <h3 class="card-title">1. Statu quo</h3>
+      <p class="card-pitch">Rester skill Claude Code, polir incrémentalement</p>
+    </div>
+    <div class="card-rank">6</div>
+  </div>
+  <div class="card-score">
+    <span class="card-score-val" style="color:var(--bad)">4.2</span>
+    <span class="card-score-lbl">/ 10</span>
+  </div>
+  <div class="pc">
+    <div class="pc-block"><span class="pc-label">Pour</span><span class="pc-content">Zéro effort, déjà live, audit V3 déjà à 8.5/10 sur le produit</span></div>
+    <div class="pc-block"><span class="pc-label">Contre</span><span class="pc-content">Dépendance Anthropic. TAM plafonné à ~50-100k devs Claude Code. Zéro revenue. Mort annoncée si Anthropic ship rules natifs.</span></div>
+  </div>
+  <div class="meta">
+    <span class="meta-item">Effort: <span class="meta-val">0</span></span>
+    <span class="meta-item">Plafond: <span class="meta-val">~10k stars</span></span>
+    <span class="meta-item">Revenue: <span class="meta-val">$0</span></span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-top">
+    <div>
+      <h3 class="card-title">2. CLI autonome</h3>
+      <p class="card-pitch">Extraire en CLI LLM-agnostique style Aider</p>
+    </div>
+    <div class="card-rank">4</div>
+  </div>
+  <div class="card-score">
+    <span class="card-score-val" style="color:var(--mid)">5.4</span>
+    <span class="card-score-lbl">/ 10</span>
+  </div>
+  <div class="pc">
+    <div class="pc-block"><span class="pc-label">Pour</span><span class="pc-content">Décroche d'Anthropic. Ouvre le marché Cursor/OpenAI/local. Trajectoire prouvée par Aider.</span></div>
+    <div class="pc-block"><span class="pc-label">Contre</span><span class="pc-content">Marché hyper-concurrentiel (Aider, Cline, Continue). Différenciation "enforcement" pas encore démontrée. 6 mois de travail full-time.</span></div>
+  </div>
+  <div class="meta">
+    <span class="meta-item">Effort: <span class="meta-val">6 mois</span></span>
+    <span class="meta-item">Plafond: <span class="meta-val">~30k stars</span></span>
+    <span class="meta-item">Revenue: <span class="meta-val">OSS only</span></span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-top">
+    <div>
+      <h3 class="card-title">3. Governance B2B</h3>
+      <p class="card-pitch">Runtime de gouvernance pour tout agent IA (LangChain, CrewAI, MCP)</p>
+    </div>
+    <div class="card-rank"><span class="medal m-2" style="margin:0">2</span></div>
+  </div>
+  <div class="card-score">
+    <span class="card-score-val" style="color:var(--good)">6.8</span>
+    <span class="card-score-lbl">/ 10</span>
+  </div>
+  <div class="pc">
+    <div class="pc-block"><span class="pc-label">Pour</span><span class="pc-content">Catégorie orpheline. Enterprise AI paie cher pour l'audit/budget. Couplages LangChain (100k★) = distribution massive.</span></div>
+    <div class="pc-block"><span class="pc-label">Contre</span><span class="pc-content">Sales cycle enterprise long (6-12 mois). Besoin compétences go-to-market B2B. Concurrence Langfuse/Helicone sur observabilité.</span></div>
+  </div>
+  <div class="meta">
+    <span class="meta-item">Effort: <span class="meta-val">4 mois</span></span>
+    <span class="meta-item">Plafond: <span class="meta-val">~40k stars</span></span>
+    <span class="meta-item">Revenue: <span class="meta-val">$50-500k MRR</span></span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-top">
+    <div>
+      <h3 class="card-title">4. Compliance vertical</h3>
+      <p class="card-pitch">Ship HIPAA/SOC2/PCI-compliant SaaS en 1 jour</p>
+    </div>
+    <div class="card-rank">3</div>
+  </div>
+  <div class="card-score">
+    <span class="card-score-val" style="color:var(--mid)">6.3</span>
+    <span class="card-score-lbl">/ 10</span>
+  </div>
+  <div class="pc">
+    <div class="pc-block"><span class="pc-label">Pour</span><span class="pc-content">Willingness to pay 100x (audit compliance = $30k chez un cabinet). YC healthtech/fintech paie $500-2000/mois. Faible concurrence sérieuse.</span></div>
+    <div class="pc-block"><span class="pc-label">Contre</span><span class="pc-content">TAM étroit (quelques milliers de startups). Pas viral. Nécessite expertise compliance (certifications SOC2 auditeur).</span></div>
+  </div>
+  <div class="meta">
+    <span class="meta-item">Effort: <span class="meta-val">3-4 mois</span></span>
+    <span class="meta-item">Plafond: <span class="meta-val">~8k stars</span></span>
+    <span class="meta-item">Revenue: <span class="meta-val">$20-100k MRR</span></span>
+  </div>
+</div>
+
+<div class="card" style="border-color:var(--gold);background:linear-gradient(135deg,#171b25 0%,#1d2230 100%)">
+  <div class="card-top">
+    <div>
+      <h3 class="card-title" style="color:var(--gold)">5. Cognitive OS</h3>
+      <p class="card-pitch">Runtime d'orchestration pour travail cognitif (code + recherche + due diligence + legal + medical)</p>
+    </div>
+    <div class="card-rank winner"><span class="medal m-1" style="margin:0">1</span></div>
+  </div>
+  <div class="card-score" style="background:#2a2415">
+    <span class="card-score-val" style="color:var(--gold)">7.5</span>
+    <span class="card-score-lbl">/ 10</span>
+  </div>
+  <div class="pc">
+    <div class="pc-block"><span class="pc-label">Pour</span><span class="pc-content">Catégorie à revendiquer. Thèse defensible (commoditisation des modèles → valeur sur l'orchestration). Domain Packs horizontaux + verticaux. Benchmark "Haiku+Orchestre &gt; GPT-4 nu" = viral. Moat = mémoire + event-sourcing.</span></div>
+    <div class="pc-block"><span class="pc-label">Contre</span><span class="pc-content">Narrative complexe à vendre. Demande 2-3 Domain Packs non-code pour crédibiliser. Sensible à l'exécution marketing (manifesto + benchmark + vidéo).</span></div>
+  </div>
+  <div class="meta">
+    <span class="meta-item">Effort: <span class="meta-val">8-10 semaines</span></span>
+    <span class="meta-item">Plafond: <span class="meta-val">~80k stars</span></span>
+    <span class="meta-item">Revenue: <span class="meta-val">$100k-1M MRR</span></span>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-top">
+    <div>
+      <h3 class="card-title">6. Micro-produit</h3>
+      <p class="card-pitch">Ship-Stripe-in-60min — produit payant ultra-niché</p>
+    </div>
+    <div class="card-rank">5</div>
+  </div>
+  <div class="card-score">
+    <span class="card-score-val" style="color:var(--mid)">5.0</span>
+    <span class="card-score-lbl">/ 10</span>
+  </div>
+  <div class="pc">
+    <div class="pc-block"><span class="pc-label">Pour</span><span class="pc-content">Time-to-market ultra-court. Revenue immédiat ($29-99). Proof of concept monétisation. Sous-utilise Orchestre à 10%.</span></div>
+    <div class="pc-block"><span class="pc-label">Contre</span><span class="pc-content">Pas viral. Copiable en 2 semaines. Aucune catégorie revendiquée. Te détourne de la thèse principale.</span></div>
+  </div>
+  <div class="meta">
+    <span class="meta-item">Effort: <span class="meta-val">1 mois</span></span>
+    <span class="meta-item">Plafond: <span class="meta-val">~3k stars</span></span>
+    <span class="meta-item">Revenue: <span class="meta-val">$3-15k MRR</span></span>
+  </div>
+</div>
+
+</div>
+
+<div class="verdict">
+<h2>Recommandation</h2>
+<p><strong>Option 5 — Cognitive OS</strong> gagne sur 5 des 8 critères et sur le score pondéré (7.5). C'est la seule option qui combine un marché illimité, un moat fort, un plafond stars &gt;50k, un revenue potentiel 7 chiffres, et une proximité WOW à 9/10.</p>
+<p>Stratégie couplée optimale : faire <strong>option 5 en principal</strong> (pivot narratif de 8-10 semaines, zéro refonte du runtime) + <strong>option 3 en dérivé</strong> (adapter LangChain/CrewAI/MCP comme preuves du Cognitive OS) + <strong>option 6 ou 4 en revenue stream parallèle</strong> (cashflow pendant que la thèse s'installe).</p>
+<p><strong>À éviter :</strong> option 1 (statu quo, mort annoncée) et option 2 en standalone (mauvais ratio effort/impact). Option 2 vaut en tant que surface du Cognitive OS, pas comme produit principal.</p>
+</div>
+
+<div class="method">
+<strong>Méthodologie.</strong> Score pondéré calculé sur 8 critères (/10) avec pondérations : Marché ×2, Moat ×2, Revenue ×2, Proba succès ×2, WOW ×1.5, Plafond stars ×1, Time-to-traction ×1, Complexité inverse ×1 (total 12.5). Les valeurs sont des estimations stratégiques basées sur l'audit V3, les benchmarks OSS comparables (Aider, LangChain, Temporal, dbt), et l'état du marché AI agents 2026.
+</div>
+
+</div>
+
+<script>
+const ctx = document.getElementById('radar');
+new Chart(ctx, {
+  type: 'radar',
+  data: {
+    labels: ['Marché','Moat','Plafond stars','Revenue','WOW','Time-to-traction','Proba succès','Complexité (facile)'],
+    datasets: [
+      {
+        label: 'Cognitive OS',
+        data: [10,9,9,8,9,4,4,5],
+        backgroundColor: 'rgba(245,197,99,0.18)',
+        borderColor: '#f5c563',
+        borderWidth: 2,
+        pointBackgroundColor: '#f5c563',
+        pointRadius: 4
+      },
+      {
+        label: 'Governance B2B',
+        data: [8,8,7,9,7,3,5,5],
+        backgroundColor: 'rgba(90,201,151,0.12)',
+        borderColor: '#5ac997',
+        borderWidth: 2,
+        pointBackgroundColor: '#5ac997',
+        pointRadius: 3
+      },
+      {
+        label: 'Compliance vertical',
+        data: [5,7,4,8,5,6,7,7],
+        backgroundColor: 'rgba(124,158,255,0.1)',
+        borderColor: '#7c9eff',
+        borderWidth: 2,
+        pointBackgroundColor: '#7c9eff',
+        pointRadius: 3
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      r: {
+        min: 0, max: 10,
+        ticks: { stepSize: 2, color: '#8b94a8', backdropColor: 'transparent', font: {size:10} },
+        grid: { color: '#252a37' },
+        angleLines: { color: '#252a37' },
+        pointLabels: { color: '#e8ecf4', font: { size: 12, weight: '500' } }
+      }
+    }
+  }
+});
+</script>
+
+</body>
+</html>

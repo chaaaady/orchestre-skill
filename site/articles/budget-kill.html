@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Comment j'ai empêché un agent IA de brûler 850$ pendant la nuit — Chady Emara</title>
+<meta name="description" content="Anatomie d'un incident d'agent runaway, et le kill-switch déterministe qu'on a construit pour qu'il n'arrive plus jamais. Code reproductible.">
+<style>
+  :root{
+    --bg:#0f1218; --bg-alt:#141822; --panel:#171b25; --border:#252a37;
+    --text:#e8ecf4; --muted:#8b94a8; --dim:#5b6478;
+    --accent:#f5c563; --accent-soft:#f5c56322;
+    --link:#a8baff; --danger:#ff7a7a; --ok:#8de09a;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);color:var(--text);line-height:1.75;
+    font-family:-apple-system,BlinkMacSystemFont,"Inter","SF Pro Text","Segoe UI",system-ui,sans-serif;
+    font-size:17px;
+  }
+  a{color:var(--link);text-decoration:none;border-bottom:1px solid transparent;transition:border-color .15s}
+  a:hover{border-bottom-color:currentColor}
+  .container{max-width:720px;margin:0 auto;padding:0 24px}
+
+  nav{position:sticky;top:0;background:rgba(15,18,24,0.88);backdrop-filter:blur(10px);border-bottom:1px solid var(--border);z-index:50}
+  .nav-inner{max-width:1040px;margin:0 auto;padding:16px 24px;display:flex;justify-content:space-between;align-items:center}
+  .brand{font-weight:600;letter-spacing:-0.01em;color:var(--text);border:none}
+  .brand:hover{color:var(--accent)}
+  .nav-links{display:flex;gap:28px;font-size:14px}
+  .nav-links a{color:var(--muted);border:none}
+  .nav-links a:hover{color:var(--text)}
+
+  .article-header{padding:72px 0 40px}
+  .kicker{font-size:12px;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin-bottom:18px;font-weight:600}
+  h1{font-size:40px;font-weight:700;letter-spacing:-0.03em;line-height:1.15;margin-bottom:22px}
+  .lede{font-size:19px;color:var(--muted);line-height:1.6;margin-bottom:30px;max-width:640px}
+  .article-meta{display:flex;gap:16px;font-size:13px;color:var(--dim);padding-top:24px;border-top:1px solid var(--border)}
+
+  article{padding:40px 0 120px}
+  article h2{font-size:26px;font-weight:700;letter-spacing:-0.02em;line-height:1.25;margin:56px 0 18px}
+  article h3{font-size:19px;font-weight:600;margin:36px 0 12px}
+  article p{margin-bottom:20px;color:var(--text)}
+  article p.dim{color:var(--muted);font-size:15px;font-style:italic}
+  article strong{color:var(--text);font-weight:600}
+  article em{color:var(--accent);font-style:normal;font-weight:500}
+
+  ul, ol{margin:16px 0 24px 24px;color:var(--text)}
+  li{margin-bottom:8px;padding-left:4px}
+  li::marker{color:var(--accent)}
+
+  code{background:var(--bg-alt);color:var(--accent);padding:2px 7px;border-radius:4px;font-family:"SF Mono",ui-monospace,monospace;font-size:14px;border:1px solid var(--border)}
+  pre{background:var(--panel);border:1px solid var(--border);padding:22px;border-radius:10px;overflow-x:auto;margin:24px 0;line-height:1.6;font-size:13.5px}
+  pre code{background:transparent;border:none;padding:0;color:var(--text)}
+  .code-label{font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:-14px;margin-top:28px;font-weight:600;font-family:"SF Mono",monospace}
+
+  .timeline{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:28px 32px;margin:36px 0}
+  .timeline-item{display:grid;grid-template-columns:90px 1fr;gap:20px;padding:14px 0;border-top:1px solid var(--border)}
+  .timeline-item:first-child{border-top:none;padding-top:0}
+  .timeline-time{font-family:"SF Mono",monospace;color:var(--accent);font-size:13px;font-weight:600;padding-top:2px}
+  .timeline-event{font-size:15px;color:var(--text)}
+  .timeline-event strong{color:var(--danger)}
+  .timeline-event strong.ok{color:var(--ok)}
+
+  blockquote{border-left:3px solid var(--accent);padding:4px 24px;margin:28px 0;color:var(--muted);font-size:17px}
+
+  .callout{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--accent);padding:22px 26px;border-radius:8px;margin:32px 0}
+  .callout-label{font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:var(--accent);font-weight:600;margin-bottom:8px}
+  .callout p:last-child{margin-bottom:0}
+
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:12px 20px;margin:24px 0 32px;font-size:15px}
+  .kv dt{color:var(--muted);font-weight:500}
+  .kv dd{color:var(--text);font-family:"SF Mono",monospace;font-size:14px}
+
+  hr{border:none;border-top:1px solid var(--border);margin:44px 0}
+
+  .cta-block{margin-top:64px;padding:36px;background:linear-gradient(135deg,var(--panel),var(--bg-alt));border:1px solid var(--border);border-radius:14px;text-align:center}
+  .cta-block h3{font-size:20px;margin-bottom:10px}
+  .cta-block p{color:var(--muted);font-size:15px;margin-bottom:22px}
+  .cta-btn{display:inline-flex;align-items:center;gap:10px;background:var(--accent);color:#0f1218;padding:12px 22px;border-radius:8px;font-weight:600;font-size:15px;border:none}
+  .cta-btn:hover{border:none;transform:translateY(-1px)}
+
+  footer{padding:48px 0;border-top:1px solid var(--border);color:var(--muted);font-size:14px}
+  .footer-inner{max-width:1040px;margin:0 auto;padding:0 24px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px}
+
+  @media(max-width:640px){
+    h1{font-size:30px}
+    article h2{font-size:22px}
+    .timeline{padding:20px 18px}
+    .timeline-item{grid-template-columns:70px 1fr;gap:12px}
+    body{font-size:16px}
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <a href="../index.html" class="brand">Chady Emara</a>
+    <div class="nav-links">
+      <a href="../index.html#approche">Approche</a>
+      <a href="../index.html#articles">Articles</a>
+      <a href="../index.html#work">Travailler ensemble</a>
+      <a href="../index.html#contact">Contact</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+
+  <header class="article-header">
+    <div class="kicker">Article · Cas pratique</div>
+    <h1>Comment j'ai empêché un agent IA de brûler 850&nbsp;$ pendant la nuit</h1>
+    <p class="lede">
+      Une nuit de mars, un agent autonome que je testais a failli cramer 850&nbsp;$ en crédits Claude sur une tâche simple. Voici exactement ce qui s'est passé, pourquoi mon code l'a arrêté à 12,40&nbsp;$, et comment vous pouvez reproduire le même garde-fou en moins de 80 lignes.
+    </p>
+    <div class="article-meta">
+      <span>Chady Emara</span>
+      <span>·</span>
+      <span>12 min de lecture</span>
+      <span>·</span>
+      <span>Code inclus · reproductible</span>
+    </div>
+  </header>
+
+  <article>
+
+    <h2>1. Le setup — un agent qui <em>devrait</em> être sage</h2>
+
+    <p>
+      Je travaillais sur une tâche banale : un agent chargé de scanner un gros repo de docs (environ 4&nbsp;000 fichiers markdown), d'extraire pour chacun une fiche structurée <code>{title, summary, topics, last_reviewed}</code>, et de remplir une table Postgres. Le kind de tâche qu'on confie volontiers à un agent parce que c'est long, répétitif, et que ça ne demande pas beaucoup de <em>jugement</em>.
+    </p>
+
+    <p>
+      Paramétrage de base : Claude Haiku 4.5, tools <code>read_file</code>, <code>list_dir</code>, <code>insert_row</code>. J'avais donné à l'agent une consigne simple : <em>"traite les 4&nbsp;000 fichiers, insère une ligne par fichier, ping-moi quand c'est fini."</em> J'ai lancé ça à 23h30 avant d'aller me coucher. La veille, j'avais fait tourner la même config sur 200 fichiers. Ça avait marché. Coût : 0,78&nbsp;$. Extrapolation naïve pour 4&nbsp;000 : 15&nbsp;$, 16&nbsp;$. Confortable.
+    </p>
+
+    <p>
+      Spoiler : l'extrapolation linéaire est fausse. Les agents ne se comportent pas linéairement quand on multiplie par 20 la taille de l'input. Ils se comportent <em>non-linéairement mal</em>.
+    </p>
+
+    <h2>2. La timeline — comment on passe de 0,78&nbsp;$ à <em>presque</em> 850&nbsp;$</h2>
+
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="timeline-time">23:31</div>
+        <div class="timeline-event">Lancement de l'agent. Budget soft cap : $20. Budget hard cap (kill-switch) : <strong class="ok">$50</strong>.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">23:47</div>
+        <div class="timeline-event">L'agent a traité 180 fichiers. Coût : $0,92. <strong class="ok">Tout va bien.</strong></div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">00:12</div>
+        <div class="timeline-event">Un fichier tombe dans un format auquel l'agent ne s'attendait pas (vieux markdown avec front-matter YAML malformé). L'agent n'arrive pas à parser. Il <strong>retry</strong>. Et retry. Et retry.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">00:14</div>
+        <div class="timeline-event">L'agent décide de <em>"lire plus de contexte"</em> pour comprendre le fichier. Il charge les 10 fichiers voisins. Ça ne l'aide pas. Il ré-essaie avec 20 fichiers voisins.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">00:21</div>
+        <div class="timeline-event">Coût cumulé : $4,10. Le rythme a triplé en 7 minutes. <strong>Le kill-switch se met à surveiller sérieusement.</strong></div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">00:34</div>
+        <div class="timeline-event">L'agent, toujours bloqué sur le même fichier, décide qu'il a besoin <em>"de relire l'intégralité des règles que je t'ai données, plus l'historique de mes tentatives"</em>. Chaque turn contient maintenant ~60&nbsp;k tokens d'input.</div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">00:52</div>
+        <div class="timeline-event">Coût cumulé : $12,40. Le hard cap est atteint. <strong class="ok">Le runtime déclenche BudgetExceededError. L'agent est stoppé.</strong></div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-time">08:14</div>
+        <div class="timeline-event">Je réveille, je lis les logs. Sans le kill-switch, extrapolation du rythme observé entre 00:21 et 00:52 : <strong>~850 $</strong> consommés en 8 heures.</div>
+      </div>
+    </div>
+
+    <blockquote>
+      L'agent n'avait pas eu d'intention malveillante. Il avait juste rencontré un cas qu'il ne savait pas gérer et s'était engagé dans une <em>spirale d'exploration coûteuse</em> pour essayer de s'en sortir. C'est exactement comme ça que les incidents arrivent en production.
+    </blockquote>
+
+    <h2>3. Pourquoi un budget mental ne suffit pas</h2>
+
+    <p>
+      Au début, je pensais qu'il suffisait d'écrire dans le prompt système : <em>"ne dépasse pas 20&nbsp;$ de coût"</em>. Ça ne marche pas, pour trois raisons :
+    </p>
+
+    <ul>
+      <li><strong>L'agent ne voit pas le coût.</strong> Il n'a pas accès au compteur de tokens. Il ne sait pas combien il a brûlé depuis le début de la session, sauf si <em>vous</em> le lui dites.</li>
+      <li><strong>Même s'il le voit, il ne raisonne pas bien dessus.</strong> Les LLMs sont mauvais pour le calcul progressif. Lui dire <em>"tu as 20&nbsp;$"</em> au départ et espérer qu'il gère, c'est comme demander à un chat de faire ses comptes.</li>
+      <li><strong>Une décision de limitation doit être déterministe.</strong> Le kill-switch ne peut pas être une suggestion : <em>"si tu veux bien, arrête-toi"</em>. Il doit être câblé en dur dans le runtime, hors du contrôle du LLM.</li>
+    </ul>
+
+    <p>
+      La bonne architecture tient en une phrase : <strong>le coût est compté par le code, pas par le modèle. Et quand le code dit stop, le modèle n'a pas voix au chapitre.</strong>
+    </p>
+
+    <h2>4. L'architecture du kill-switch</h2>
+
+    <p>Trois composants, reliés par un contrat simple :</p>
+
+    <ul>
+      <li><strong>CostTracker</strong> — un petit objet qui intercepte chaque appel au modèle, additionne les tokens (input + output) et traduit en dollars selon le pricing du modèle utilisé.</li>
+      <li><strong>BudgetPolicy</strong> — la configuration : combien je m'autorise à dépenser sur cette tâche ? Soft cap (warning), hard cap (kill).</li>
+      <li><strong>TurnLoop</strong> — la boucle qui fait tourner l'agent. Avant chaque tour, elle interroge le CostTracker. Si le hard cap est dépassé, elle lève une exception <em>avant</em> l'appel modèle. Pas après.</li>
+    </ul>
+
+    <div class="callout">
+      <div class="callout-label">Le point clé</div>
+      <p>
+        La vérification arrive <strong>avant</strong> l'appel, pas après. Un check <em>"tu as dépassé, arrête-toi la prochaine fois"</em> arrive toujours trop tard. Un tour supplémentaire, c'est potentiellement des milliers de tokens de plus.
+      </p>
+    </div>
+
+    <h2>5. Le code minimal — 80 lignes suffisent</h2>
+
+    <p>Voici la version dégraissée, en TypeScript. Elle marche avec n'importe quel SDK d'agent (Claude, OpenAI, Mistral). Version complète et typée dans le repo Orchestre, mais cette version-là se suffit à elle-même pour comprendre l'idée :</p>
+
+    <div class="code-label">cost-tracker.ts</div>
+<pre><code>type Pricing = { inputPer1M: number; outputPer1M: number }
+
+type Usage = { inputTokens: number; outputTokens: number }
+
+export class CostTracker {
+  private totalCostUSD = 0
+  constructor(private pricing: Pricing) {}
+
+  record(usage: Usage): void {
+    const cost =
+      (usage.inputTokens / 1_000_000) * this.pricing.inputPer1M +
+      (usage.outputTokens / 1_000_000) * this.pricing.outputPer1M
+    this.totalCostUSD += cost
+  }
+
+  get cost(): number { return this.totalCostUSD }
+}
+
+export class BudgetExceededError extends Error {
+  constructor(public readonly spent: number, public readonly cap: number) {
+    super(`Budget exceeded: spent $${spent.toFixed(2)} &gt; cap $${cap.toFixed(2)}`)
+    this.name = 'BudgetExceededError'
+  }
+}
+
+export type BudgetPolicy = { softCapUSD: number; hardCapUSD: number }
+
+export function enforceBudget(tracker: CostTracker, policy: BudgetPolicy): void {
+  if (tracker.cost &gt;= policy.hardCapUSD) {
+    throw new BudgetExceededError(tracker.cost, policy.hardCapUSD)
+  }
+  if (tracker.cost &gt;= policy.softCapUSD) {
+    console.warn(`[budget] soft cap reached: $${tracker.cost.toFixed(2)}`)
+  }
+}
+</code></pre>
+
+    <div class="code-label">turn-loop.ts</div>
+<pre><code>import { CostTracker, BudgetPolicy, enforceBudget } from './cost-tracker'
+
+type AgentStep = () =&gt; Promise&lt;{ done: boolean; usage: { inputTokens: number; outputTokens: number } }&gt;
+
+export async function runBoundedLoop(
+  step: AgentStep,
+  opts: { maxTurns: number; tracker: CostTracker; policy: BudgetPolicy },
+): Promise&lt;{ turns: number; finalCost: number }&gt; {
+  const { maxTurns, tracker, policy } = opts
+
+  for (let turn = 1; turn &lt;= maxTurns; turn++) {
+    // CHECK BEFORE CALL — jamais après
+    enforceBudget(tracker, policy)
+
+    const { done, usage } = await step()
+    tracker.record(usage)
+
+    if (done) return { turns: turn, finalCost: tracker.cost }
+  }
+
+  throw new Error(`Max turns exceeded (${maxTurns})`)
+}
+</code></pre>
+
+    <p>C'est tout. Ajoutez un logger si vous voulez, persistez les événements sur disque si vous voulez. L'idée fondamentale tient dans les 40 lignes ci-dessus : un compteur, une policy, et un check <em>avant</em> chaque appel.</p>
+
+    <h2>6. Les erreurs classiques</h2>
+
+    <h3>6.1 Soft cap = hard cap</h3>
+
+    <p>Mauvaise idée. Le soft cap est un warning qui vous permet d'investiguer en direct (envoyer un Slack, activer un mode verbose, spéculer sur la suite). Le hard cap est la mort. Les deux servent à des choses différentes. Typiquement j'utilise <code>softCap = hardCap * 0.6</code>.</p>
+
+    <h3>6.2 Compter uniquement les tokens output</h3>
+
+    <p>Erreur très courante. En mode agentique, l'input gonfle à chaque tour (on réinjecte l'historique). À 10&nbsp;000 tokens d'output, vous pouvez avoir 200&nbsp;000 tokens d'input accumulés. Ne comptez jamais que l'output, vous vous retrouverez avec des factures trois fois plus élevées que prévu.</p>
+
+    <h3>6.3 Oublier le context window</h3>
+
+    <p>Le hard cap budget doit être doublé d'un hard cap tokens par tour (typiquement 90% du context window du modèle). Sinon l'agent finit par se prendre une erreur <em>"context too long"</em>, re-essaie, re-échoue, et brûle des tokens à ne rien faire.</p>
+
+    <h3>6.4 Faire confiance au LLM pour s'auto-limiter</h3>
+
+    <p>Déjà dit, je le répète parce que c'est la plus grosse erreur que je vois chez les gens qui débutent : <strong>ne faites jamais confiance au LLM pour ses propres limites</strong>. Les limites sont du code. Pas du prompt.</p>
+
+    <h2>7. Ce que ça vous coûte et ce que ça vous fait gagner</h2>
+
+    <dl class="kv">
+      <dt>Lignes de code</dt><dd>~80 (version minimale) / ~400 (version Orchestre production)</dd>
+      <dt>Temps à intégrer</dt><dd>30 min sur un projet existant</dd>
+      <dt>Coût d'un tour bloqué</dt><dd>0,000x $ (comparaison locale)</dd>
+      <dt>Coût d'une nuit runaway évitée</dt><dd>100 à 2&nbsp;000 $ selon le modèle et la taille</dd>
+      <dt>Ratio</dt><dd>entre 1&nbsp;000&nbsp;× et 50&nbsp;000&nbsp;× positif</dd>
+    </dl>
+
+    <p>Je n'ai jamais rencontré, sur aucun projet, une raison valable de ne pas avoir de kill-switch. C'est littéralement l'optimisation la plus rentable que vous puissiez faire sur un agent, et elle prend une demi-heure.</p>
+
+    <h2>8. Aller plus loin</h2>
+
+    <p>Ce qu'on vient de voir est le <em>minimum absolu</em>. Une version production-grade (qui est ce qu'Orchestre implémente) ajoute :</p>
+
+    <ul>
+      <li><strong>Budget hiérarchisé</strong> — un budget global, un budget par wave, un budget par feature, un budget par tool-call. Les enveloppes s'emboîtent comme des poupées russes.</li>
+      <li><strong>Event store</strong> — chaque tour écrit un événement signé dans un fichier <code>.jsonl</code>. Vous pouvez replay, auditer, prouver.</li>
+      <li><strong>Memory d'échecs</strong> — le pattern qui a fait exploser le budget est stocké et réinjecté la prochaine fois pour éviter la récidive.</li>
+      <li><strong>Graceful degradation</strong> — quand le soft cap est franchi, l'agent passe en mode <em>"simplifie, n'explore pas, boucle moins"</em> avant d'être tué net au hard cap.</li>
+      <li><strong>Propagation</strong> — quand plusieurs agents coopèrent, le budget parent propage sa contrainte aux enfants.</li>
+    </ul>
+
+    <p>Tout ça est dans le repo Orchestre, open-source, MIT, testé à 308 tests. Si le sujet vous intéresse, la démo <code>examples/runtime-demo/demo.mjs</code> montre l'ensemble du dispositif en marche sur une tâche réelle en ~30 événements observables.</p>
+
+    <hr>
+
+    <h2>9. Ce que je retiens de cette nuit</h2>
+
+    <p>
+      Un agent IA est un processus autonome qui consomme de l'argent réel à la vitesse à laquelle il parle. C'est une nouvelle classe d'objets dans le monde logiciel. Le réflexe <em>"je fais confiance au prompt, j'envoie en prod"</em> est le même réflexe qu'un dev de 1995 qui désactive les <code>try/catch</code> parce que <em>"mon code ne plante jamais"</em>. Ça marche jusqu'au jour où ça ne marche plus — et ce jour-là, ça coûte très cher.
+    </p>
+
+    <p>
+      La bonne nouvelle : on sait comment faire. On l'a toujours su, en fait. Il suffit d'appliquer aux agents ce qu'on applique à n'importe quel processus long-running : un quota, un timeout, un kill-switch, un journal. La technologie est là. Il manque juste que ça devienne un réflexe — comme taper <code>ulimit</code> avant de lancer un job suspect.
+    </p>
+
+    <p>
+      Si vous déployez des agents et que vous n'avez pas cette couche aujourd'hui, ce n'est pas un problème de compétence, c'est un problème d'outillage qui n'a pas encore été standardisé. C'est exactement le vide que j'essaie de combler avec Orchestre.
+    </p>
+
+    <div class="cta-block">
+      <h3>Vous avez ce problème ?</h3>
+      <p>
+        Si vous êtes en train de mettre un agent en production et que cette histoire vous rappelle quelque chose que vous avez vécu — ou que vous craignez — je suis preneur d'un échange.
+      </p>
+      <a class="cta-btn" href="../index.html#contact">Me contacter →</a>
+    </div>
+
+  </article>
+</div>
+
+<footer>
+  <div class="footer-inner">
+    <div>© 2026 Chady Emara</div>
+    <div>
+      <a href="mailto:chady.emara00@gmail.com">chady.emara00@gmail.com</a> ·
+      <a href="https://github.com/chaaaady/orchestre-skill" target="_blank" rel="noopener">GitHub</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>
