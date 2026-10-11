@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Rend index.html image par image (Puppeteer) puis assemble out/scene.mp4 (ffmpeg).
 //
-//   node render.mjs                     240 images → out/frames/ → out/scene.mp4 + out/contact.png
+//   node render.mjs                     toutes les images → out/frames/ → out/scene.mp4 + out/contact.png
 //   node render.mjs --frames 0,36,120   seulement ces images → out/keys/ (pas de vidéo)
 //   node render.mjs --test              page de test du moteur de pinceau → out/test.png
 //
@@ -15,19 +15,18 @@ import puppeteer from 'puppeteer';
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const OUT = path.join(ROOT, 'out');
 const FPS = 24;
-const FRAME_COUNT = 240;
 
 const args = process.argv.slice(2);
 const argValue = name => { const i = args.indexOf(name); return i >= 0 ? args[i + 1] : undefined; };
 const framesArg = argValue('--frames');
 const testArg = args.includes('--test');
 
-function parseFrames(spec) {
+function parseFrames(spec, total) {
   return spec.split(',').flatMap(part => {
     const [a, b] = part.split('-').map(Number);
     if (Number.isNaN(a)) return [];
     return b === undefined ? [a] : Array.from({ length: b - a + 1 }, (_, i) => a + i);
-  }).filter(n => n >= 0 && n < FRAME_COUNT);
+  }).filter(n => n >= 0 && n < total);
 }
 
 async function resolveFfmpeg() {
@@ -90,8 +89,9 @@ async function main() {
     }
 
     const page = await openPage(browser, 'render');
+    const total = await page.evaluate(() => window.NAISSANCE.FRAMES);
     const partial = framesArg !== undefined;
-    const frames = partial ? parseFrames(framesArg) : Array.from({ length: FRAME_COUNT }, (_, i) => i);
+    const frames = partial ? parseFrames(framesArg, total) : Array.from({ length: total }, (_, i) => i);
     const dir = path.join(OUT, partial ? 'keys' : 'frames');
     if (!partial) await rm(dir, { recursive: true, force: true });
     await mkdir(dir, { recursive: true });
@@ -115,10 +115,10 @@ async function main() {
       '-r', String(FPS), '-movflags', '+faststart', mp4,
     ]);
     console.log('→ out/scene.mp4');
-    // Planche contact : 12 images réparties sur les 10 s (une toutes les 20 images).
+    // Planche contact : 12 images réparties sur toute la durée.
     run(ffmpeg, [
       '-y', '-loglevel', 'error', '-i', mp4,
-      '-vf', "select='not(mod(n\\,20))',scale=480:-1,tile=4x3:padding=6:color=0x111111",
+      '-vf', `select='not(mod(n\\,${total / 12}))',scale=480:-1,tile=4x3:padding=6:color=0x111111`,
       '-frames:v', '1', '-update', '1', path.join(OUT, 'contact.png'),
     ]);
     console.log('→ out/contact.png');
