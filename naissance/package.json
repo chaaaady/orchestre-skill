@@ -1,0 +1,17 @@
+{
+  "name": "naissance",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Animation « Naissance » — 10 s à l'encre et au pinceau, entièrement dessinée en code sur <canvas>.",
+  "type": "module",
+  "scripts": {
+    "render": "node render.mjs",
+    "preview": "npx --yes serve -l 8080 ."
+  },
+  "dependencies": {
+    "puppeteer": "^24.10.0"
+  },
+  "optionalDependencies": {
+    "ffmpeg-static": "^5.2.0"
+  }
+}

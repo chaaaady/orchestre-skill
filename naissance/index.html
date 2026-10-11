@@ -1,0 +1,1271 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Naissance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&display=block">
+<style>
+  :root { --ink: #111111; --paper: #ECE7DC; --w: min(calc(100vw - 32px), calc((100vh - 96px) * 16 / 9)); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: var(--ink); color: var(--paper); }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+         min-height: 100vh; padding: 16px; font: 700 24px/1 Caveat, cursive; }
+  canvas { display: block; width: var(--w); height: auto; aspect-ratio: 16 / 9; background: var(--paper); }
+  .bar { display: flex; align-items: center; gap: 14px; width: var(--w); }
+  button { all: unset; cursor: pointer; flex: none; width: 40px; height: 40px; display: grid; place-items: center;
+           border: 2px solid var(--paper); border-radius: 50%; }
+  button:focus-visible { outline: 2px dashed var(--paper); outline-offset: 3px; }
+  button svg { width: 18px; height: 18px; fill: var(--paper); }
+  input[type=range] { flex: 1; min-width: 0; accent-color: var(--paper); }
+  #info { flex: none; min-width: 9.5em; text-align: right; font-variant-numeric: tabular-nums; }
+  .font-probe { position: absolute; left: -9999px; font: 700 20px Caveat; }
+  body.render { display: block; padding: 0; }
+  body.render .bar { display: none; }
+  body.render canvas { width: 1920px; }
+</style>
+</head>
+<body>
+<canvas id="c" width="1920" height="1080"></canvas>
+<div class="bar">
+  <button id="play" aria-label="Lecture / pause"><svg viewBox="0 0 24 24"><path id="playIcon" d="M7 4v16l13-8z"/></svg></button>
+  <input id="seek" type="range" min="0" max="239" step="1" value="0" aria-label="Image">
+  <span id="info">image 000 / 239</span>
+</div>
+<span class="font-probe" aria-hidden="true">day 0 · day 1</span>
+<script>
+(() => {
+'use strict';
+
+/* =====================================================================
+   NAISSANCE — 10 s d'encre, entièrement dessinées en code.
+   renderFrame(n) est pure : même n ⇒ même image. Aucun Math.random().
+   ===================================================================== */
+
+const W = 1920, H = 1080, FPS = 24, FRAMES = 240;
+const INK = '#111111', PAPER = '#ECE7DC';
+const TAU = Math.PI * 2;
+
+/* ---------- maths & easing ---------- */
+const clamp = (v, a = 0, b = 1) => (v < a ? a : v > b ? b : v);
+const lerp = (a, b, t) => a + (b - a) * t;
+const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const span = (t, a, b) => clamp((t - a) / (b - a));
+const easeInOut = t => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+const easeOutBack = (t, s = 1.70158) => 1 + (s + 1) * Math.pow(t - 1, 3) + s * Math.pow(t - 1, 2);
+const easeInExpo = t => (t <= 0 ? 0 : Math.pow(2, 10 * t - 10));
+const easeOutExpo = t => (t >= 1 ? 1 : 1 - Math.pow(2, -10 * t));
+const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+
+/* ---------- PRNG à graine (mulberry32) + hachage ---------- */
+function mulberry32(a) {
+  return function () {
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hash(a, b = 0, c = 0, d = 0) {
+  let h = 0x9E3779B1 ^ Math.imul(a | 0, 0x85EBCA77);
+  h = Math.imul(h ^ (h >>> 15) ^ Math.imul(b | 0, 0xC2B2AE3D), 0x27D4EB2F);
+  h = Math.imul(h ^ (h >>> 13) ^ Math.imul(c | 0, 0x165667B1), 0x85EBCA77);
+  h = Math.imul(h ^ (h >>> 16) ^ Math.imul(d | 0, 0x9E3779B1), 0xC2B2AE3D);
+  return (h ^ (h >>> 15)) >>> 0;
+}
+const rand = (a, b, c, d) => mulberry32(hash(a, b, c, d));      // générateur dédié
+const h01 = (a, b, c, d) => hash(a, b, c, d) / 4294967296;       // valeur unique [0,1)
+
+/* ---------- bruit de gradient 2D (Perlin) codé à la main ---------- */
+const PERM = new Uint8Array(512);
+{
+  const r = mulberry32(0xC0FFEE);
+  const p = Array.from({ length: 256 }, (_, i) => i);
+  for (let i = 255; i > 0; i--) { const j = Math.floor(r() * (i + 1)); const tmp = p[i]; p[i] = p[j]; p[j] = tmp; }
+  for (let i = 0; i < 512; i++) PERM[i] = p[i & 255];
+}
+const GX = [1, -1, 1, -1, 1, -1, 0, 0], GY = [1, 1, -1, -1, 0, 0, 1, -1];
+function noise2(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi, X = xi & 255, Y = yi & 255;
+  const a = PERM[X + PERM[Y]] & 7, b = PERM[X + 1 + PERM[Y]] & 7;
+  const c = PERM[X + PERM[Y + 1]] & 7, d = PERM[X + 1 + PERM[Y + 1]] & 7;
+  const u = xf * xf * xf * (xf * (xf * 6 - 15) + 10), v = yf * yf * yf * (yf * (yf * 6 - 15) + 10);
+  const n00 = GX[a] * xf + GY[a] * yf, n10 = GX[b] * (xf - 1) + GY[b] * yf;
+  const n01 = GX[c] * xf + GY[c] * (yf - 1), n11 = GX[d] * (xf - 1) + GY[d] * (yf - 1);
+  const x0 = n00 + u * (n10 - n00), x1 = n01 + u * (n11 - n01);
+  return x0 + v * (x1 - x0);
+}
+function fbm(x, y, oct = 4) {
+  let s = 0, a = 0.5, f = 1;
+  for (let i = 0; i < oct; i++) { s += a * noise2(x * f, y * f); f *= 2.03; a *= 0.5; }
+  return s;
+}
+
+/* ---------- état de l'image courante (réinitialisé à chaque renderFrame) ---------- */
+// boil : la graine des tremblements change toutes les 3 images (8 fois / s).
+const S = { frame: 0, boil: 0, jitter: 1 };
+
+const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+const view = document.getElementById('c');
+const vctx = view.getContext('2d');
+const inkCv = mk(W, H), ink = inkCv.getContext('2d');      // calque d'encre (transparent)
+const tintCv = mk(W, H), tint = tintCv.getContext('2d');   // copie teintée pour l'inversion
+
+/* =====================================================================
+   MOTEUR DE PINCEAU
+   ===================================================================== */
+
+// Lissage Catmull-Rom puis ré-échantillonnage à pas constant le long de l'arc.
+function resample(pts, step, smooth = true) {
+  const n = pts.length, dx = [], dy = [];
+  for (let i = 0; i < n - 1; i++) {
+    const p1 = pts[i], p2 = pts[i + 1];
+    if (!smooth || n < 3) { dx.push(p1[0]); dy.push(p1[1]); continue; }
+    const p0 = pts[i > 0 ? i - 1 : 0], p3 = pts[i + 2 < n ? i + 2 : n - 1];
+    const k = Math.max(1, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / 5));
+    for (let j = 0; j < k; j++) {
+      const t = j / k, t2 = t * t, t3 = t2 * t;
+      dx.push(0.5 * (2 * p1[0] + (p2[0] - p0[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (3 * p1[0] - p0[0] - 3 * p2[0] + p3[0]) * t3));
+      dy.push(0.5 * (2 * p1[1] + (p2[1] - p0[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (3 * p1[1] - p0[1] - 3 * p2[1] + p3[1]) * t3));
+    }
+  }
+  dx.push(pts[n - 1][0]); dy.push(pts[n - 1][1]);
+  const m = dx.length, cum = new Float32Array(m);
+  for (let i = 1; i < m; i++) cum[i] = cum[i - 1] + Math.hypot(dx[i] - dx[i - 1], dy[i] - dy[i - 1]);
+  const len = cum[m - 1], cnt = Math.max(2, Math.ceil(len / step) + 1);
+  const X = new Float32Array(cnt), Y = new Float32Array(cnt), Sa = new Float32Array(cnt);
+  for (let i = 0, j = 0; i < cnt; i++) {
+    const s = (len * i) / (cnt - 1);
+    while (j < m - 2 && cum[j + 1] < s) j++;
+    const sl = cum[j + 1] - cum[j], t = sl > 1e-6 ? (s - cum[j]) / sl : 0;
+    X[i] = dx[j] + (dx[j + 1] - dx[j]) * t; Y[i] = dy[j] + (dy[j + 1] - dy[j]) * t; Sa[i] = s;
+  }
+  return { x: X, y: Y, s: Sa, len, n: cnt };
+}
+
+// Tache organique (goutte, bout de pinceau, tête…). stretch/angle pour l'étirer.
+function blob(ctx, x, y, rad, o = {}) {
+  if (rad <= 0.15) return;
+  const seed = o.seed ?? 3, jag = (o.jag ?? 0.16), B = S.boil;
+  const st = o.stretch ?? 1, ang = o.angle ?? 0, ca = Math.cos(ang), sa = Math.sin(ang);
+  const N = Math.max(7, Math.min(60, Math.round(rad * 0.9 * Math.sqrt(st)) + 5));
+  const so = (seed % 991) * 0.7731, sq = Math.sqrt(st);
+  const px = new Float32Array(N), py = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    const a = (i / N) * TAU, c = Math.cos(a), s = Math.sin(a);
+    let rr = rad * (1 + jag * (noise2(c * 1.1 + so, s * 1.1 + B * 0.53) + 0.45 * noise2(c * 3.3 + so + 9, s * 3.3 + B * 0.71))
+      + jag * 0.3 * (h01(i, seed, B) - 0.5));
+    if (o.tail && c < 0) rr *= 1 + o.tail * Math.pow(-c, 6);       // goutte : queue vers -x local
+    const lx = c * rr * sq, ly = s * rr / sq;
+    px[i] = x + lx * ca - ly * sa; py[i] = y + lx * sa + ly * ca;
+  }
+  ctx.beginPath();
+  ctx.moveTo((px[N - 1] + px[0]) / 2, (py[N - 1] + py[0]) / 2);
+  for (let i = 0; i < N; i++) {
+    const j = (i + 1) % N;
+    ctx.quadraticCurveTo(px[i], py[i], (px[i] + px[j]) / 2, (py[i] + py[j]) / 2);
+  }
+  ctx.closePath();
+  ctx.fill();
+}
+
+/* inkStroke(points, épaisseur) — un coup de pinceau.
+   Options : seed, progress (drawOn), wobble, rough, startW/endW, taperIn/taperOut,
+   pressure, breaks, dry (0..1) + dryLen, spurs, specks, w1 (largeur de fin pour la perspective). */
+function inkStroke(ctx, pts, w, o = {}) {
+  const prog = o.progress ?? 1;
+  if (prog <= 0 || w <= 0.05 || !pts || pts.length === 0) return;
+  const seed = o.seed ?? 1, B = S.boil;
+  const P = resample(pts.length === 1 ? [pts[0], pts[0]] : pts, clamp(w * 0.45, 1.1, 4), o.smooth !== false);
+  const L = P.len;
+  if (L < 0.8) { blob(ctx, P.x[0], P.y[0], w * 0.5, { seed }); return; }
+  if (L < 16 && w < 2.4 && !o.dry) { // trait minuscule : un simple coup de plume tremblé
+    const n = Math.max(1, Math.floor(P.n * prog) - 1), j = (o.wobble ?? 1) * S.jitter * 0.6;
+    ctx.save(); ctx.lineWidth = w * (0.8 + 0.4 * h01(seed, 3)); ctx.strokeStyle = ctx.fillStyle;
+    ctx.beginPath(); ctx.moveTo(P.x[0] + (h01(seed, B, 1) - 0.5) * j, P.y[0] + (h01(seed, B, 2) - 0.5) * j);
+    const m = Math.floor(n / 2);
+    if (m > 0) ctx.lineTo(P.x[m] + (h01(seed, B, 3) - 0.5) * j, P.y[m] + (h01(seed, B, 4) - 0.5) * j);
+    ctx.lineTo(P.x[n] + (h01(seed, B, 5) - 0.5) * j, P.y[n] + (h01(seed, B, 6) - 0.5) * j);
+    ctx.stroke(); ctx.restore();
+    return;
+  }
+  const r = rand(seed, 17), rb = rand(seed, B, 29);
+  const jit = (o.wobble ?? 1.3) * S.jitter, rough = o.rough ?? 0.22;
+  const dryAmt = o.dry ?? 0, dryFrom = 1 - (o.dryLen ?? 0.45);
+  const startW = o.startW ?? lerp(0.3, 0.65, r());
+  const endW = o.endW ?? (dryAmt ? lerp(0.45, 0.7, r()) : lerp(0.03, 0.14, r()));
+  const tin = o.taperIn ?? lerp(0.03, 0.1, r());
+  const tout = o.taperOut ?? lerp(0.18, 0.38, r());
+  const press = o.pressure ?? 0.32, wEnd = (o.w1 ?? w) / w;
+  const nib = o.nib ?? 0.22, nibA = o.nibAngle ?? -0.8;
+  const so = (seed % 997) * 1.371;
+  // micro-ruptures : le pinceau saute un instant
+  const nb = o.breaks ?? (L > 80 ? Math.floor(r() * L / 260 + (r() < 0.3 ? 1 : 0)) : 0);
+  const brS = [], brG = [];
+  for (let i = 0; i < nb; i++) { brS.push(L * lerp(0.2, 0.8, r()) + (rb() - 0.5) * 5); brG.push(lerp(2, 5, r()) + w * 0.12); }
+  const shx = (rb() - 0.5) * jit, shy = (rb() - 0.5) * jit;
+
+  const Lv = L * prog;
+  let n = 0; while (n < P.n && P.s[n] <= Lv + 1e-3) n++;
+  n = Math.max(2, Math.min(P.n, n));
+  const CX = new Float32Array(n), CY = new Float32Array(n), NX = new Float32Array(n), NY = new Float32Array(n);
+  const HW = new Float32Array(n), HF = new Float32Array(n), BM = new Float32Array(n), EL = new Float32Array(n), ER = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const i0 = i > 0 ? i - 1 : 0, i1 = i < P.n - 1 ? i + 1 : P.n - 1;
+    let tx = P.x[i1] - P.x[i0], ty = P.y[i1] - P.y[i0];
+    const tl = Math.hypot(tx, ty) || 1; tx /= tl; ty /= tl;
+    const nx = -ty, ny = tx, s = P.s[i], u = s / L;
+    const wob = (noise2(s * 0.0065 + so, B * 1.37 + seed * 0.013) * 1.5 + noise2(s * 0.04 + so, B * 2.11 + 7.7) * 0.45) * jit;
+    CX[i] = P.x[i] + nx * wob + shx; CY[i] = P.y[i] + ny * wob + shy; NX[i] = nx; NY[i] = ny;
+    let pr = 1;
+    if (u < tin) pr *= lerp(startW, 1, easeOutCubic(u / tin));
+    if (u > 1 - tout) pr *= lerp(1, endW, sstep(1 - tout, 1, u));
+    pr *= (1 + press * (noise2(s * 0.0045 + so * 1.7, seed * 0.37 + 3.1) + 0.45 * noise2(s * 0.016 + so, seed * 0.11 + 9.4))) * lerp(1, wEnd, u);
+    pr *= 1 - nib * (0.5 + 0.5 * Math.cos(2 * (Math.atan2(ty, tx) - nibA)));
+    let bm = 1;
+    for (let k = 0; k < nb; k++) { const d = (s - brS[k]) / brG[k]; bm *= 1 - 0.97 * Math.exp(-d * d); }
+    const dry = dryAmt ? sstep(dryFrom, 1, u) * dryAmt : 0;
+    HF[i] = w * 0.5 * pr;
+    HW[i] = HF[i] * bm * (1 - dry * 1.15);
+    BM[i] = bm;
+    EL[i] = 1 + rough * (noise2(s * 0.09 + so, B * 3.3 + 1.1) * 0.7 + noise2(s * 0.33 + so, B * 2.9 + 4.4) * 0.45 + (h01(i, B, seed, 1) - 0.5) * 0.25);
+    ER[i] = 1 + rough * (noise2(s * 0.09 + so + 41.3, B * 3.3 + 5.9) * 0.7 + noise2(s * 0.33 + so + 17.9, B * 2.9 + 8.2) * 0.45 + (h01(i, B, seed, 2) - 0.5) * 0.25);
+  }
+  // corps : ruban gauche → droite, coupé aux micro-ruptures
+  ctx.beginPath();
+  // bord : la rugosité n'augmente pas indéfiniment avec la largeur (sinon effet « chenille »)
+  for (let i = 0; i < n; i++) {
+    const k = HW[i] > 0 ? Math.min(1, (3.5 + HW[i] * 0.3) / HW[i]) : 1;
+    EL[i] = 1 + (EL[i] - 1) * k; ER[i] = 1 + (ER[i] - 1) * k;
+  }
+  const ribbon = (a, b) => {
+    ctx.moveTo(CX[a] + NX[a] * HW[a] * EL[a], CY[a] + NY[a] * HW[a] * EL[a]);
+    for (let i = a + 1; i <= b; i++) ctx.lineTo(CX[i] + NX[i] * HW[i] * EL[i], CY[i] + NY[i] * HW[i] * EL[i]);
+    for (let i = b; i >= a; i--) ctx.lineTo(CX[i] - NX[i] * HW[i] * ER[i], CY[i] - NY[i] * HW[i] * ER[i]);
+    ctx.closePath();
+  };
+  let a = -1;
+  for (let i = 0; i < n; i++) {
+    const on = BM[i] > 0.22 && HW[i] > 0.1;
+    if (on && a < 0) a = i;
+    if (!on && a >= 0) { if (i - 1 > a) ribbon(a, i - 1); a = -1; }
+  }
+  if (a >= 0 && n - 1 > a) ribbon(a, n - 1);
+  ctx.fill();
+  // pose du pinceau (bout arrondi) et tête humide quand le trait est en cours
+  const capR0 = HW[0] * 0.95, capR1 = HW[n - 1] * (prog < 1 ? 1.08 : 0.85);
+  if (BM[0] > 0.22) capR0 > 3 ? blob(ctx, CX[0], CY[0], capR0, { seed: seed + 1, jag: 0.1 }) : dot(ctx, CX[0], CY[0], capR0);
+  if (BM[n - 1] > 0.22) capR1 > 3 ? blob(ctx, CX[n - 1], CY[n - 1], capR1, { seed: seed + 2, jag: 0.1 }) : dot(ctx, CX[n - 1], CY[n - 1], capR1);
+  if (o.blot) blob(ctx, CX[0], CY[0], w * lerp(0.55, 0.8, r()), { seed: seed + 3, jag: 0.22 });
+
+  // pinceau sec : le cœur s'amincit, les poils se séparent en filets
+  if (dryAmt > 0) {
+    const K = Math.max(3, Math.min(14, Math.round(w / 1.6)));
+    const keepAt = (i, k, f) => {
+      const dry = sstep(dryFrom, 1, P.s[i] / L) * dryAmt;
+      if (dry < 0.02) return false;
+      return noise2(P.s[i] * 0.03 + k * 7.31 + so, B * 0.71 + k * 1.3) * 0.5 + 0.5 + 0.5 - dry * (0.62 + Math.abs(f) * 0.25) > 0.5;
+    };
+    ctx.save();
+    ctx.strokeStyle = ctx.fillStyle; ctx.lineCap = 'round';
+    for (let k = 0; k < K; k++) {
+      const f = ((k + 0.5) / K - 0.5) * 2 * (0.94 + 0.12 * (r() - 0.5));
+      ctx.lineWidth = Math.max(0.55, (w / K) * lerp(0.7, 1.35, r()));
+      ctx.beginPath();
+      let pen = false;
+      for (let i = 0; i < n; i++) {
+        if (!keepAt(i, k, f)) { pen = false; continue; }
+        const e = f > 0 ? EL[i] : ER[i];
+        const x = CX[i] + NX[i] * HF[i] * f * e, y = CY[i] + NY[i] * HF[i] * f * e;
+        if (pen) ctx.lineTo(x, y); else { ctx.moveTo(x, y); pen = true; }
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  // bavures : l'encre gonfle sur le bord ou file dans une fibre du papier
+  const nsp = o.spurs ?? Math.floor(r() * (1 + L / 160));
+  for (let k = 0; k < nsp; k++) {
+    const fr = lerp(0.08, 0.92, r()), side = r() < 0.5 ? -1 : 1, kind = r(), sz = lerp(0.3, 0.75, r()), ang = (r() - 0.5) * 1.6, hl = lerp(3, 9, r());
+    const i = Math.floor(fr * (P.n - 1));
+    if (i >= n || BM[i] < 0.5 || HW[i] < 0.6) continue;
+    const hw = HW[i], ex = CX[i] + NX[i] * hw * side * 0.8, ey = CY[i] + NY[i] * hw * side * 0.8;
+    if (kind < 0.7) {
+      blob(ctx, ex, ey, hw * sz + 0.5, { seed: seed * 7 + k, jag: 0.3, stretch: 1.5, angle: Math.atan2(NY[i], NX[i]) + ang * 0.3 });
+    } else {
+      const c = Math.cos(ang), sn = Math.sin(ang), dx = (NX[i] * c - NY[i] * sn) * side, dy = (NX[i] * sn + NY[i] * c) * side;
+      ctx.save(); ctx.lineWidth = lerp(0.5, 0.9, sz); ctx.strokeStyle = ctx.fillStyle;
+      ctx.beginPath(); ctx.moveTo(ex, ey);
+      ctx.quadraticCurveTo(ex + dx * hl * 0.5 + dy * 1.5, ey + dy * hl * 0.5 - dx * 1.5, ex + dx * (hw * 0.3 + hl), ey + dy * (hw * 0.3 + hl));
+      ctx.stroke(); ctx.restore();
+    }
+  }
+  // éclats satellites
+  const nsk = o.specks ?? Math.floor(r() * L / 150);
+  for (let k = 0; k < nsk; k++) {
+    const fr = r(), side = r() < 0.5 ? -1 : 1, dist = lerp(1.5, 5 + w * 0.7, r()), rad = lerp(0.35, 0.8 + w * 0.07, r() * r());
+    const i = Math.floor(fr * (P.n - 1));
+    if (i >= n) continue;
+    const d = HW[i] + dist + (rb() - 0.5) * 2;
+    dot(ctx, CX[i] + NX[i] * d * side + (rb() - 0.5) * 2, CY[i] + NY[i] * d * side + (rb() - 0.5) * 2, rad);
+  }
+}
+
+function dot(ctx, x, y, r) {
+  if (r <= 0.1) return;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill();
+}
+
+// drawOn(trait, progression) : la main trace le trait progressivement.
+function drawOn(ctx, stroke, p) {
+  if (p <= 0) return;
+  inkStroke(ctx, stroke.pts, stroke.w, Object.assign({}, stroke, { progress: clamp(p) }));
+}
+
+// K points régulièrement espacés le long d'une courbe lissée.
+function resampleN(pts, K, smooth = true) {
+  const P = resample(pts, 2, smooth), out = [];
+  for (let k = 0, j = 0; k < K; k++) {
+    const s = (P.len * k) / (K - 1);
+    while (j < P.n - 2 && P.s[j + 1] < s) j++;
+    const sl = P.s[j + 1] - P.s[j], t = sl > 1e-6 ? (s - P.s[j]) / sl : 0;
+    out.push([lerp(P.x[j], P.x[j + 1], t), lerp(P.y[j], P.y[j + 1], t)]);
+  }
+  return out;
+}
+// Portion [s0, s1] (abscisses curvilignes) d'un chemin ré-échantillonné.
+function subPath(P, s0, s1, step = 3) {
+  const n = Math.max(2, Math.ceil((s1 - s0) / step) + 1), out = [];
+  for (let k = 0, j = 0; k < n; k++) {
+    const s = lerp(s0, s1, k / (n - 1));
+    while (j < P.n - 2 && P.s[j + 1] < s) j++;
+    const sl = P.s[j + 1] - P.s[j], t = sl > 1e-6 ? clamp((s - P.s[j]) / sl) : 0;
+    out.push([lerp(P.x[j], P.x[j + 1], t), lerp(P.y[j], P.y[j + 1], t)]);
+  }
+  return out;
+}
+
+/* inkFill(forme) — aplat d'encre aux bords irréguliers, avec zones sèches où le papier transparaît. */
+function inkFill(ctx, poly, o = {}) {
+  const seed = o.seed ?? 5, B = S.boil, amp = (o.rough ?? 2.4) * S.jitter;
+  const P = resample(poly.concat([poly[0]]), o.step ?? 3, false);
+  const n = P.n - 1, so = (seed % 983) * 1.913;
+  const path = new Path2D();
+  let cx = 0, cy = 0;
+  for (let i = 0; i < n; i++) {
+    const i0 = (i - 1 + n) % n, i1 = (i + 1) % n;
+    const tx = P.x[i1] - P.x[i0], ty = P.y[i1] - P.y[i0], tl = Math.hypot(tx, ty) || 1;
+    const x0 = P.x[i], y0 = P.y[i];
+    const d = amp * (noise2(x0 * 0.03 + so, y0 * 0.03 + B * 0.91) * 0.9 + noise2(x0 * 0.19 + so, y0 * 0.19 + B * 1.73) * 0.5 + (h01(i, B, seed) - 0.5) * 0.45);
+    const X = x0 - (ty / tl) * d, Y = y0 + (tx / tl) * d;
+    if (i) path.lineTo(X, Y); else path.moveTo(X, Y);
+    cx += x0; cy += y0;
+  }
+  path.closePath();
+  ctx.fill(path);
+  if (o.dry && n > 2) dryZones(ctx, path, P, n, cx / n, cy / n, o);
+  return path;
+}
+
+// Zones sèches : on gratte l'encre par filets dans le sens du pinceau.
+function dryZones(ctx, path, P, n, cx, cy, o) {
+  const seed = o.seed ?? 5, r = rand(seed, 61), rb = rand(seed, S.boil, 67);
+  const zones = o.dryZones ?? 1 + Math.floor(r() * 2), ang = o.dryAngle ?? r() * Math.PI;
+  const size = o.drySize ?? 60, ca = Math.cos(ang), sa = Math.sin(ang);
+  ctx.save();
+  ctx.clip(path);
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.strokeStyle = '#000'; ctx.lineCap = 'round';
+  for (let z = 0; z < zones; z++) {
+    const e = Math.floor(r() * n), k = lerp(0.04, 0.3, r());
+    const zx = lerp(P.x[e], cx, k), zy = lerp(P.y[e], cy, k);
+    const count = Math.round(34 * o.dry);
+    for (let i = 0; i < count; i++) {
+      const along = (r() - 0.5) * size * 1.2, across = (r() - 0.5) * size * 0.55 * (0.4 + r());
+      const sx = zx + ca * along - sa * across, sy = zy + sa * along + ca * across;
+      const len = lerp(6, size * 0.9, r() * r()), lw = lerp(0.5, 2.4, r() * r());
+      ctx.globalAlpha = lerp(0.45, 1, r());
+      ctx.lineWidth = lw;
+      ctx.beginPath(); ctx.moveTo(sx, sy);
+      for (let j = 1; j <= 4; j++) {
+        const q = (j / 4) * len, wv = (rb() - 0.5) * 1.2;
+        ctx.lineTo(sx + ca * q - sa * wv, sy + sa * q + ca * wv);
+      }
+      ctx.stroke();
+    }
+    for (let i = 0; i < 22 * o.dry; i++) {
+      ctx.globalAlpha = lerp(0.5, 1, r());
+      dot(ctx, zx + (r() - 0.5) * size, zy + (r() - 0.5) * size * 0.7, lerp(0.4, 1.5, r()));
+    }
+  }
+  ctx.restore();
+}
+
+/* splatter(x, y, force) — tache centrale, filaments radiaux, gouttelettes projetées.
+   progress : 0 → 1 l'explosion se déploie ; retract : 0 → 1 tout revient vers le centre. */
+function splatter(ctx, x, y, force, o = {}) {
+  const p = o.progress ?? 1;
+  if (p <= 0) return;
+  const seed = o.seed ?? 11, R = force, r = rand(seed, 101);
+  const ret = o.retract ?? 0, keep = 1 - ret;
+  const grow = easeOutExpo(clamp(p * 2.4)), reach = easeOutExpo(clamp(p * 1.7)), fly = easeOutCubic(p);
+  const dir = o.dir ?? 0, bias = o.bias ?? 0;
+  const pickAngle = () => { const a = r() * TAU; return bias ? a + Math.sin(dir - a) * bias : a; };
+  // filaments
+  const nf = o.filaments ?? Math.round(9 + R / 5);
+  for (let k = 0; k < nf; k++) {
+    const a = pickAngle(), len = R * lerp(1.15, 3.4, Math.pow(r(), 1.6)), bw = R * lerp(0.1, 0.3, r()), bend = (r() - 0.5) * 0.5;
+    const hasDrop = r() < 0.75, dropGap = lerp(0.08, 0.4, r()), dropR = lerp(0.35, 0.75, r()), tipW = lerp(0.06, 0.3, r());
+    const L = len * reach * lerp(1, 0.25, ret);
+    if (L < R * 0.3) continue;
+    const ca = Math.cos(a), sa = Math.sin(a), cb = Math.cos(a + bend), sb = Math.sin(a + bend);
+    const pts = [[x + ca * R * 0.2, y + sa * R * 0.2], [x + (ca + cb) * 0.5 * L * 0.55, y + (sa + sb) * 0.5 * L * 0.55], [x + cb * L, y + sb * L]];
+    inkStroke(ctx, pts, bw * keep + bw * 0.4 * ret, { seed: seed * 31 + k, taperIn: 0.01, startW: 1, endW: tipW, taperOut: 0.85, rough: 0.3, breaks: 0, wobble: 0.5, spurs: 1, specks: 0, pressure: 0.3, nib: 0 });
+    if (hasDrop && ret < 0.7) {
+      const dd = L * (1 + dropGap * fly);
+      blob(ctx, x + cb * dd, y + sb * dd, bw * dropR * keep, { seed: seed * 37 + k, stretch: 1.6, angle: a + bend, tail: 0.6, jag: 0.12 });
+    }
+  }
+  // tache centrale + lobes de couronne
+  const core = R * lerp(0.35, 1, grow) * lerp(1, 0.55, ret);
+  blob(ctx, x, y, core, { seed, jag: 0.24, stretch: o.squash ?? 1, angle: dir });
+  const nl = 6 + Math.floor(r() * 5);
+  for (let k = 0; k < nl; k++) {
+    const a = r() * TAU, d = core * lerp(0.7, 1.05, r()), lr = core * lerp(0.16, 0.34, r()) * (1 - 0.6 * ret);
+    blob(ctx, x + Math.cos(a) * d, y + Math.sin(a) * d, lr, { seed: seed * 7 + k, jag: 0.2 });
+  }
+  // doigts de la couronne : courtes coulures arrondies tout autour du cœur
+  const nc = o.fingers ?? Math.round(14 + R / 4);
+  for (let k = 0; k < nc; k++) {
+    const a = r() * TAU, fl = core * lerp(0.25, 0.85, Math.pow(r(), 1.4)) * (1 - 0.85 * ret), fw = core * lerp(0.1, 0.22, r()), bend = (r() - 0.5) * 0.6;
+    const ca = Math.cos(a), sa = Math.sin(a), d0 = core * 0.8;
+    const ex = x + Math.cos(a + bend * 0.5) * (d0 + fl), ey = y + Math.sin(a + bend * 0.5) * (d0 + fl);
+    inkStroke(ctx, [[x + ca * d0 * 0.7, y + sa * d0 * 0.7], [x + Math.cos(a + bend * 0.2) * (d0 + fl * 0.5), y + Math.sin(a + bend * 0.2) * (d0 + fl * 0.5)], [ex, ey]], fw,
+      { seed: seed * 43 + k, taperIn: 0.01, startW: 1, endW: lerp(0.4, 0.8, r()), taperOut: 0.6, rough: 0.25, breaks: 0, wobble: 0.3, spurs: 0, specks: 0, nib: 0 });
+  }
+  // gouttelettes projetées
+  const nd = o.droplets ?? Math.round(16 + R * 0.55);
+  for (let k = 0; k < nd; k++) {
+    const a = pickAngle(), u = Math.pow(r(), 1.7), dist = R * lerp(1.5, 6.2, u), rad = R * lerp(0.025, 0.14, Math.pow(r(), 2.2)) * (1 - 0.55 * u);
+    const st = lerp(1, 2.6, r()), late = r() * 0.25;
+    const fk = easeOutCubic(clamp((p - late) / (1 - late)));
+    if (fk <= 0) continue;
+    const d = dist * fk * lerp(1, 0.08, easeInOut(clamp(ret * 1.3 - u * 0.3)));
+    blob(ctx, x + Math.cos(a) * d, y + Math.sin(a) * d, rad * lerp(1, 0.4, ret), { seed: seed * 53 + k, stretch: lerp(st, 1, ret), angle: a, tail: 0.5 * (1 - ret), jag: 0.12 });
+  }
+  // brume d'encre
+  const nm = o.mist ?? Math.round(R * 1.1);
+  for (let k = 0; k < nm; k++) {
+    const a = pickAngle(), dist = R * lerp(1.6, 8, Math.pow(r(), 0.8)), rad = lerp(0.4, 1.7, Math.pow(r(), 3));
+    const d = dist * fly * (1 - ret);
+    dot(ctx, x + Math.cos(a) * d, y + Math.sin(a) * d, rad * (1 - ret));
+  }
+}
+
+/* handText(texte, progression) — écrit lettre par lettre, chaque lettre tremble un peu.
+   Chaque glyphe est rendu hors écran puis « encré » : décalages par bandes pour des bords qui vibrent. */
+const glyphCv = mk(640, 640), glyph = glyphCv.getContext('2d');
+const glyph2Cv = mk(640, 640), glyph2 = glyph2Cv.getContext('2d');
+
+function inkGlyph(ctx, ch, size, weight, seed) {
+  const m = ctx.getTransform(), k = clamp(Math.hypot(m.a, m.b), 0.25, 2.5);  // échelle réelle à l'écran
+  const fs = size * k, G = Math.min(640, Math.ceil(fs * 2.1)), ox = G / 2, oy = G * 0.64, B = S.boil, so = (seed % 101) * 3.7;
+  glyph.setTransform(1, 0, 0, 1, 0, 0); glyph.clearRect(0, 0, G, G);
+  glyph.font = `${weight} ${fs}px Caveat, cursive`;
+  glyph.textAlign = 'center'; glyph.textBaseline = 'alphabetic';
+  glyph.fillStyle = INK; glyph.strokeStyle = INK; glyph.lineJoin = 'round'; glyph.lineWidth = fs * 0.03;
+  glyph.fillText(ch, ox, oy); glyph.strokeText(ch, ox, oy);
+  const st = 2, amp = fs * 0.02 * S.jitter;
+  glyph2.setTransform(1, 0, 0, 1, 0, 0); glyph2.clearRect(0, 0, G, G);
+  for (let y = 0; y < G; y += st) {
+    const d = noise2(y * 0.09 / k + so, B * 1.31) * amp + noise2(y * 0.45 / k + so, B * 2.17 + 3) * amp * 0.35;
+    glyph2.drawImage(glyphCv, 0, y, G, st, d, y, G, st);
+  }
+  glyph.clearRect(0, 0, G, G);
+  for (let x = 0; x < G; x += st) {
+    const d = noise2(x * 0.09 / k + so + 30, B * 1.31 + 7) * amp + noise2(x * 0.45 / k + so + 11, B * 2.17 + 9) * amp * 0.35;
+    glyph.drawImage(glyph2Cv, x, 0, st, G, x, d, st, G);
+  }
+  ctx.drawImage(glyphCv, 0, 0, G, G, -ox / k, -oy / k, G / k, G / k);
+}
+
+function handText(ctx, text, x, y, size, p, o = {}) {
+  if (p <= 0) return;
+  const seed = o.seed ?? 5, B = S.boil, J = S.jitter, weight = o.weight ?? 700;
+  ctx.save();
+  ctx.font = `${weight} ${size}px Caveat, cursive`;
+  const total = ctx.measureText(text).width;
+  const x0 = o.align === 'center' ? x - total / 2 : x;
+  const reveal = clamp(p) * text.length;
+  for (let i = 0; i < text.length; i++) {
+    const local = clamp(reveal - i);
+    if (local <= 0) break;
+    const ch = text[i];
+    if (ch === ' ') continue;
+    const cx = x0 + ctx.measureText(text.slice(0, i)).width, cw = ctx.measureText(ch).width;
+    const rs = rand(seed, i, 3), rb = rand(seed, i, B, 9);
+    const dy0 = (rs() - 0.5) * size * 0.07, rot0 = (rs() - 0.5) * 0.1, sc0 = 1 + (rs() - 0.5) * 0.1;
+    const dx = (rb() - 0.5) * size * 0.03 * J, dy = (rb() - 0.5) * size * 0.03 * J, rot = (rb() - 0.5) * 0.06 * J;
+    ctx.save();
+    ctx.translate(cx + cw / 2 + dx, y + dy0 + dy);
+    ctx.rotate(rot0 + rot);
+    const pop = local < 1 ? lerp(0.9, 1, easeOutCubic(local)) : 1;
+    ctx.scale(sc0 * pop, sc0 * pop);
+    if (local < 1) { // la plume avance : on dévoile la lettre de gauche à droite
+      ctx.beginPath();
+      ctx.rect(-cw / 2 - size * 0.15, -size * 1.1, (cw + size * 0.3) * easeOutCubic(local), size * 1.6);
+      ctx.clip();
+    }
+    inkGlyph(ctx, ch, size, weight, seed * 31 + i);
+    ctx.restore();
+  }
+  ctx.restore();
+}
+
+/* =====================================================================
+   PAPIER (généré une seule fois, hors écran)
+   ===================================================================== */
+const PADX = 160, PADY = 120;
+let grainCv, grainLightCv, toothCv, vignetteCv;
+
+function buildTextures() {
+  const pw = W + PADX, ph = H + PADY;
+  // grain + fibres : encre très diluée posée sur le papier
+  grainCv = mk(pw, ph);
+  const g = grainCv.getContext('2d');
+  const img = g.createImageData(pw, ph), d = img.data, r = mulberry32(424242);
+  const lw = Math.ceil(pw / 8) + 2, lh = Math.ceil(ph / 8) + 2, mot = new Float32Array(lw * lh);
+  for (let y = 0; y < lh; y++) for (let x = 0; x < lw; x++) mot[y * lw + x] = fbm(x * 0.07, y * 0.07, 4);
+  for (let y = 0, i = 0; y < ph; y++) {
+    const fy = y / 8, y0 = Math.floor(fy), ty = fy - y0;
+    for (let x = 0; x < pw; x++, i += 4) {
+      const fx = x / 8, x0 = Math.floor(fx), tx = fx - x0;
+      const m00 = mot[y0 * lw + x0], m10 = mot[y0 * lw + x0 + 1], m01 = mot[(y0 + 1) * lw + x0], m11 = mot[(y0 + 1) * lw + x0 + 1];
+      const m = lerp(lerp(m00, m10, tx), lerp(m01, m11, tx), ty);
+      const fine = r(), med = noise2(x * 0.42, y * 0.42);
+      let a = 0.018 + 0.045 * (m * 0.5 + 0.5) + 0.06 * fine * fine * fine + 0.035 * Math.max(0, med);
+      if (fine > 0.99965) a = 0.25 + r() * 0.35;
+      d[i] = 17; d[i + 1] = 17; d[i + 2] = 17; d[i + 3] = Math.round(clamp(a) * 255);
+    }
+  }
+  g.putImageData(img, 0, 0);
+  g.strokeStyle = INK; g.lineCap = 'round';
+  for (let k = 0; k < 1100; k++) {
+    let x = r() * pw, y = r() * ph, a = r() * TAU;
+    g.globalAlpha = lerp(0.03, 0.09, r());
+    g.lineWidth = lerp(0.4, 1.1, r());
+    g.beginPath(); g.moveTo(x, y);
+    const len = lerp(6, 46, r() * r()), seg = 5;
+    for (let j = 0; j < seg; j++) { a += (r() - 0.5) * 0.9; x += Math.cos(a) * len / seg; y += Math.sin(a) * len / seg; g.lineTo(x, y); }
+    g.stroke();
+  }
+  g.globalAlpha = 1;
+  // même grain, teinté papier, pour les images inversées
+  grainLightCv = mk(pw, ph);
+  const gl = grainLightCv.getContext('2d');
+  gl.drawImage(grainCv, 0, 0); gl.globalCompositeOperation = 'source-in'; gl.fillStyle = PAPER; gl.fillRect(0, 0, pw, ph);
+  // dent du papier : là où l'encre n'accroche pas
+  toothCv = mk(pw, ph);
+  const tc = toothCv.getContext('2d'), ti = tc.createImageData(pw, ph), td = ti.data;
+  for (let y = 0, i = 0; y < ph; y++) {
+    for (let x = 0; x < pw; x++, i += 4) {
+      const cl = noise2(x * 0.045 + 50, y * 0.045 + 50) * 0.5 + 0.5, f = r();
+      let a = 0;
+      if (f < 0.0025 + 0.07 * Math.max(0, cl - 0.66) * 3) a = lerp(0.35, 0.95, r());
+      td[i] = 0; td[i + 1] = 0; td[i + 2] = 0; td[i + 3] = Math.round(a * 255);
+    }
+  }
+  tc.putImageData(ti, 0, 0);
+  tc.strokeStyle = '#000'; tc.lineCap = 'round';
+  for (let k = 0; k < 2600; k++) {     // fibres où l'encre n'a pas pris
+    const x = r() * pw, y = r() * ph, a = r() * TAU, len = lerp(2, 11, r() * r());
+    tc.globalAlpha = lerp(0.3, 0.85, r()); tc.lineWidth = lerp(0.5, 1.2, r());
+    tc.beginPath(); tc.moveTo(x, y); tc.quadraticCurveTo(x + Math.cos(a) * len * 0.5 + (r() - 0.5) * 2, y + Math.sin(a) * len * 0.5 + (r() - 0.5) * 2, x + Math.cos(a) * len, y + Math.sin(a) * len); tc.stroke();
+  }
+  tc.globalAlpha = 1;
+  // vignette très légère
+  vignetteCv = mk(W, H);
+  const vg = vignetteCv.getContext('2d');
+  const grad = vg.createRadialGradient(W / 2, H / 2, H * 0.35, W / 2, H / 2, H * 1.15);
+  grad.addColorStop(0, 'rgba(17,17,17,0)'); grad.addColorStop(1, 'rgba(17,17,17,0.13)');
+  vg.fillStyle = grad; vg.fillRect(0, 0, W, H);
+}
+
+// Pose le calque d'encre sur le papier. inverted : papier noir, encre claire.
+function composite(inverted) {
+  const r = rand(S.boil, 4242);
+  const ox = Math.floor(r() * PADX), oy = Math.floor(r() * PADY), tx = Math.floor(r() * PADX), ty = Math.floor(r() * PADY);
+  ink.setTransform(1, 0, 0, 1, 0, 0);
+  ink.globalAlpha = 1;
+  ink.globalCompositeOperation = 'destination-out';
+  ink.drawImage(toothCv, -tx, -ty);
+  ink.globalCompositeOperation = 'source-over';
+  const g = vctx;
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+  if (!inverted) {
+    g.fillStyle = PAPER; g.fillRect(0, 0, W, H);
+    g.drawImage(grainCv, -ox, -oy);
+    g.drawImage(vignetteCv, 0, 0);
+    g.drawImage(inkCv, 0, 0);
+  } else {
+    g.fillStyle = INK; g.fillRect(0, 0, W, H);
+    g.globalAlpha = 0.85; g.drawImage(grainLightCv, -ox, -oy); g.globalAlpha = 1;
+    tint.setTransform(1, 0, 0, 1, 0, 0);
+    tint.globalCompositeOperation = 'source-over';
+    tint.clearRect(0, 0, W, H);
+    tint.drawImage(inkCv, 0, 0);
+    tint.globalCompositeOperation = 'source-in';
+    tint.fillStyle = PAPER; tint.fillRect(0, 0, W, H);
+    tint.globalCompositeOperation = 'source-over';
+    g.drawImage(tintCv, 0, 0);
+  }
+}
+
+/* =====================================================================
+   CAMÉRA
+   ===================================================================== */
+function applyCam(ctx, c = {}) {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.translate(W / 2 + (c.sx || 0), H / 2 + (c.sy || 0));
+  ctx.rotate((c.rot || 0) + (c.sr || 0));
+  const z = c.zoom || 1;
+  ctx.scale(z, z);
+  ctx.translate(-(c.x || 0), -(c.y || 0));
+}
+// Secousse : mélange d'un bruit continu et d'un à-coup par image.
+function shake(amp, key = 0, rotAmp = 0.0012) {
+  const f = S.frame;
+  return {
+    sx: (noise2(f * 0.83 + key, 3.7) * 0.8 + (h01(f, key, 1) - 0.5) * 0.7) * amp,
+    sy: (noise2(f * 0.83 + key, 9.1) * 0.8 + (h01(f, key, 2) - 0.5) * 0.7) * amp,
+    sr: (h01(f, key, 3) - 0.5) * amp * rotAmp,
+  };
+}
+
+/* =====================================================================
+   SCÈNE « NAISSANCE »
+   Monde 2D des plans 1-3 : origine au centre de l'écran, y vers le bas.
+   ===================================================================== */
+const IMPACT = [0, 150];   // là où la goutte touche la page (les pieds de la silhouette)
+
+// Cadre « day 0 » en haut à gauche : quatre traits qui débordent aux coins, puis le texte.
+const DAY0_BOX = [
+  { pts: [[-884, -484], [-760, -489], [-606, -481]], w: 5.5, seed: 201, t: [0.10, 0.30] },
+  { pts: [[-612, -497], [-609, -432], [-614, -360]], w: 5, seed: 202, t: [0.28, 0.42] },
+  { pts: [[-598, -370], [-742, -365], [-874, -372]], w: 6, seed: 203, t: [0.40, 0.58] },
+  { pts: [[-866, -356], [-869, -428], [-863, -496]], w: 5, seed: 204, t: [0.56, 0.70] },
+];
+function drawDay0(ctx, time) {
+  for (const s of DAY0_BOX) drawOn(ctx, Object.assign({ taperOut: 0.25, breaks: 0 }, s), easeInOut(span(time, s.t[0], s.t[1])));
+  handText(ctx, 'day 0', -742, -400, 76, span(time, 0.62, 1.12), { seed: 7, align: 'center' });
+}
+
+// La goutte : elle perle au bord haut de l'écran, se détache, puis tombe en accélérant (easeInExpo).
+const DROP = { formAt: 0.42, detach: 0.92, top: -540, R: 15 };
+const dropY = time => lerp(DROP.top + 34, IMPACT[1] - DROP.R * 0.5, easeInExpo(span(time, DROP.detach, 1.5)));
+function drawDrop(ctx, time) {
+  const x = IMPACT[0];
+  if (time < DROP.formAt) return;
+  // 1) la perle qui gonfle au bord, puis le moignon qui remonte
+  if (time < DROP.detach + 0.25) {
+    const g = easeInOut(span(time, DROP.formAt, DROP.detach)), back = easeOutCubic(span(time, DROP.detach, DROP.detach + 0.25));
+    const stub = lerp(4, 30, g) * (1 - back), neck = lerp(9, 3, g);
+    if (stub > 0.5) inkFill(ctx, [[x - 12, DROP.top - 30], [x + 12, DROP.top - 30], [x + neck * 0.7, DROP.top + stub * 0.6], [x + 2, DROP.top + stub], [x - 2, DROP.top + stub], [x - neck * 0.7, DROP.top + stub * 0.6]], { seed: 301, rough: 1.2 });
+    if (time < DROP.detach) blob(ctx, x, DROP.top + stub + lerp(2, DROP.R * 0.9, g), lerp(3, DROP.R, g), { seed: 302, jag: 0.08, stretch: 1.12, angle: Math.PI / 2 });
+  }
+  // 2) la chute
+  if (time >= DROP.detach) {
+    const y = dropY(time), v = y - dropY(time - 1 / FPS);              // vitesse en px / image
+    const st = 1 + clamp(v / 70, 0, 1.6);
+    blob(ctx, x, y - DROP.R * (st - 1) * 0.5, DROP.R / Math.sqrt(st) * 1.05, { seed: 303, jag: 0.07, stretch: st, angle: Math.PI / 2, tail: 0.9 + st * 0.6 });
+    if (v > 6) {
+      // traînée sèche au-dessus de la goutte, plus quelques filets de vitesse
+      inkStroke(ctx, [[x, y - DROP.R * st * 0.9], [x + 0.6, y - DROP.R * st - v * 0.55], [x - 0.5, y - DROP.R * st - v * 1.05]], DROP.R * 0.85,
+        { seed: 304, startW: 0.95, taperIn: 0.02, endW: 0.12, taperOut: 0.9, dry: 0.8, dryLen: 0.6, breaks: 0, spurs: 0, specks: 0, nib: 0 });
+      for (let k = 0; k < 3; k++) {
+        const ox = (k - 1) * DROP.R * 1.4 + (h01(k, S.boil, 305) - 0.5) * 4;
+        inkStroke(ctx, [[x + ox, y - DROP.R * 2 - v * 0.2], [x + ox, y - DROP.R * 2 - v * lerp(0.6, 1.1, h01(k, 306))]], 1.6,
+          { seed: 307 + k, startW: 0.2, endW: 0.1, dry: 0.6, breaks: 1, spurs: 0, specks: 0, nib: 0 });
+      }
+    }
+  }
+}
+
+function shotPage(ctx, t, time) {
+  applyCam(ctx, {});
+  drawDay0(ctx, time);
+  drawDrop(ctx, time);
+}
+
+// Les 7 grosses gouttes projetées à l'impact : ce sont elles qui ramperont pour former le corps.
+const CRAWLERS = [
+  { start: [-430, 120], curl: [-40, 132], limb: 'legL', r: 12 },
+  { start: [395, 230], curl: [38, 136], limb: 'legR', r: 11 },
+  { start: [-250, -170], curl: [-10, 98], limb: 'torso', r: 13 },
+  { start: [300, -120], curl: [14, 104], limb: 'torso2', r: 10 },
+  { start: [-480, 330], curl: [-74, 112], limb: 'armL', r: 9 },
+  { start: [520, 40], curl: [76, 116], limb: 'armR', r: 9 },
+  { start: [60, -260], curl: [24, 84], limb: 'head', r: 12 },
+];
+// Éclaboussures secondaires (gouttes qui retombent plus loin).
+const SPLASH2 = [
+  { at: [-610, -40], f: 15, delay: 0.05, seed: 811 },
+  { at: [560, 330], f: 12, delay: 0.08, seed: 812 },
+  { at: [-150, 420], f: 10, delay: 0.1, seed: 813 },
+  { at: [700, -260], f: 9, delay: 0.12, seed: 814 },
+  { at: [-330, -380], f: 8, delay: 0.14, seed: 815 },
+];
+const SPLAT = { R: 86, seed: 4040 };
+
+function drawSplat(ctx, p, retract) {
+  splatter(ctx, IMPACT[0], IMPACT[1], SPLAT.R, { seed: SPLAT.seed, progress: p, retract, dir: Math.PI / 2, bias: 0.3, squash: 1.15 });
+}
+function drawAnchors(ctx, fly) {
+  for (const [i, c] of CRAWLERS.entries()) {
+    const x = lerp(IMPACT[0], c.start[0], fly), y = lerp(IMPACT[1], c.start[1], fly);
+    const a = Math.atan2(c.start[1] - IMPACT[1], c.start[0] - IMPACT[0]);
+    blob(ctx, x, y, c.r, { seed: 900 + i, stretch: lerp(2.4, 1.15, fly), angle: a, tail: lerp(1.2, 0.3, fly), jag: 0.12 });
+  }
+}
+function drawSplash2(ctx, k, retract = 0) {
+  for (const s of SPLASH2) {
+    const p = clamp((k - s.delay) * 3.2);
+    if (p <= 0) continue;
+    splatter(ctx, s.at[0], s.at[1], s.f * (1 - 0.6 * retract), { seed: s.seed, progress: p, retract, filaments: 6, droplets: 10, mist: 10 });
+  }
+}
+
+// Plan 2 — l'impact : 2 images inversées, secousse, explosion.
+function shotImpact(ctx, t, time) {
+  const k = time - 1.5;                          // secondes depuis l'impact
+  const sh = shake(54 * Math.exp(-k * 8) + 1, 11, 0.0012);
+  applyCam(ctx, Object.assign({ zoom: 1 + 0.09 * Math.exp(-k * 9) }, sh));
+  drawDay0(ctx, 99);
+  const p = clamp(0.2 + k * 3);
+  if (S.frame < 38) {
+    // traits d'impact, uniquement pendant le flash inversé
+    const r = rand(S.frame, 4141);
+    for (let i = 0; i < 26; i++) {
+      const a = r() * TAU, r0 = lerp(150, 260, r()), r1 = r0 + lerp(160, 620, r());
+      inkStroke(ctx, [[IMPACT[0] + Math.cos(a) * r0, IMPACT[1] + Math.sin(a) * r0], [IMPACT[0] + Math.cos(a) * r1, IMPACT[1] + Math.sin(a) * r1]], lerp(3, 9, r()),
+        { seed: 4200 + i, startW: 0.15, taperIn: 0.5, endW: 0.05, taperOut: 0.4, dry: 0.5, breaks: 0, spurs: 0 });
+    }
+  }
+  drawSplash2(ctx, k);
+  drawAnchors(ctx, easeOutCubic(clamp(p * 1.15)));
+  drawSplat(ctx, p, 0);
+  return { invert: S.frame < 38 };
+}
+
+/* ---------- la silhouette : coordonnées locales, pieds en (0,0), ~300 px de haut ---------- */
+const LIMB_STYLE = {
+  legL: { w: 17, seed: 501, startW: 0.85, taperIn: 0.05, endW: 0.8, taperOut: 0.3 },
+  legR: { w: 17, seed: 502, startW: 0.85, taperIn: 0.05, endW: 0.8, taperOut: 0.3 },
+  torso: { w: 40, seed: 503, startW: 0.75, taperIn: 0.18, endW: 0.42, taperOut: 0.4 },
+  torso2: { w: 27, seed: 504, startW: 0.8, taperIn: 0.1, endW: 0.5, taperOut: 0.3 },
+  armL: { w: 12, seed: 505, startW: 0.95, taperIn: 0.05, endW: 0.4, taperOut: 0.35 },
+  armR: { w: 12, seed: 506, startW: 0.95, taperIn: 0.05, endW: 0.4, taperOut: 0.35 },
+  head: { w: 17, seed: 507, startW: 0.9, taperIn: 0.05, endW: 1, taperOut: 0.1 },
+};
+const LIMBS = ['legL', 'legR', 'torso', 'torso2', 'armL', 'armR', 'head'];
+
+// Pose maladroite : genoux rentrés, épaule basse, tête trop grosse. walk ∈ [0,1[ = phase de marche.
+function figurePose(o = {}) {
+  const ph = (o.walk ?? 0) * TAU, wa = o.walkAmt ?? 0, tr = o.tremble ?? 0, f = S.frame, lean = o.lean ?? 0;
+  const cl = Math.cos(lean), sl = Math.sin(lean);
+  const P = (x, y, k) => {
+    if (tr) { x += noise2(f * 0.9 + k * 3.17, k * 1.31) * tr; y += noise2(f * 0.9 + k * 3.17, 40 + k * 1.31) * tr; }
+    return [x * cl - y * sl, x * sl + y * cl];
+  };
+  const liftL = Math.max(0, Math.sin(ph)) * 28 * wa, liftR = Math.max(0, -Math.sin(ph)) * 28 * wa;
+  const bob = -Math.abs(Math.sin(ph)) * 7 * wa, sway = Math.sin(ph) * 7 * wa, swing = Math.sin(ph) * 12 * wa;
+  const hipX = sway, hipY = -136 + bob, nkX = 4 + sway * 1.3, nkY = -246 + bob;
+  return {
+    legL: [P(-25 + sway * 0.3, 4 - liftL, 1), P(-17 + liftL * 0.15, -68 - liftL * 0.6 + bob * 0.5, 2), P(hipX - 9, hipY, 3)],
+    legR: [P(24 + sway * 0.3, -liftR, 4), P(19 - liftR * 0.15, -73 - liftR * 0.6 + bob * 0.5, 5), P(hipX + 8, hipY, 6)],
+    torso: [P(hipX, hipY + 8, 7), P(hipX - 5, -194 + bob, 8), P(nkX, nkY, 9)],
+    torso2: [P(hipX - 9, hipY - 10, 10), P(hipX - 1, -204 + bob, 11), P(nkX + 6, nkY + 12, 12)],
+    armL: [P(nkX - 18, nkY + 8, 13), P(-41 + sway, -190 + bob + swing * 0.4, 14), P(-46 + sway, -130 + bob + swing, 15)],
+    armR: [P(nkX + 16, nkY + 6, 16), P(40 + sway, -192 + bob - swing * 0.4, 17), P(52 + sway, -138 + bob - swing, 18)],
+    head: [P(nkX - 1, nkY + 10, 19), P(nkX + 2, nkY - 16, 20)],
+    headC: P(nkX + 4, nkY - 29, 21), headR: 25,
+    feet: [P(-27 + sway * 0.3, 5 - liftL, 22), P(26 + sway * 0.3, -liftR + 1, 23)],
+  };
+}
+function poseToWorld(p, ox, oy, sc = 1) {
+  const T = q => [ox + q[0] * sc, oy + q[1] * sc], out = { headR: p.headR * sc, headC: T(p.headC), feet: p.feet.map(T) };
+  for (const l of LIMBS) out[l] = p[l].map(T);
+  return out;
+}
+const LIMB_K = 26;
+function limbTarget(p, limb) {
+  if (limb !== 'head') return resampleN(p[limb], LIMB_K);
+  const neck = resampleN(p.head, 6), n = LIMB_K - 6, out = neck.slice();
+  for (let k = 1; k <= n; k++) {
+    const a = Math.PI / 2 + (k / n) * TAU * 1.15, rr = p.headR * lerp(0.6, 0.38, k / n);
+    out.push([p.headC[0] + Math.cos(a) * rr, p.headC[1] + Math.sin(a) * rr]);
+  }
+  return out;
+}
+function drawHeadAndFeet(ctx, p, headK = 1, feetK = 1) {
+  if (headK > 0) blob(ctx, p.headC[0], p.headC[1], p.headR * headK, { seed: 777, jag: 0.12, stretch: 0.9, angle: 0.4 });
+  if (feetK > 0) p.feet.forEach((f, k) => blob(ctx, f[0] + (k ? 3 : -3) * p.headR / 25, f[1], 9 * feetK * p.headR / 25, { seed: 780 + k, stretch: 1.9, jag: 0.15 }));
+}
+function drawFigure(ctx, p, extra = {}) {
+  for (const limb of LIMBS) inkStroke(ctx, p[limb], LIMB_STYLE[limb].w * p.headR / 25, Object.assign({ breaks: 0, spurs: 0, specks: 0, nib: 0.1 }, LIMB_STYLE[limb], extra, { w: undefined }));
+  drawHeadAndFeet(ctx, p);
+}
+
+/* ---------- plan 3 : les gouttes rampent, s'enroulent, se dressent ---------- */
+const MORPH_DUR = 0.17;
+const CRAWL_TIMING = [  // [début reptation, arrivée, début du redressement] en t local du plan 3
+  [0.03, 0.33, 0.40], [0.05, 0.35, 0.43], [0.07, 0.37, 0.48], [0.09, 0.39, 0.51],
+  [0.11, 0.41, 0.57], [0.13, 0.43, 0.60], [0.15, 0.45, 0.64],
+];
+const CRAWL_PATHS = CRAWLERS.map((c, i) => {
+  const r = rand(700 + i);
+  const [sx, sy] = c.start, [cx, cy] = c.curl;
+  const curlR = lerp(26, 36, r()), turns = lerp(1.25, 1.6, r()), dirS = r() < 0.5 ? 1 : -1;
+  const a0 = Math.atan2(sy - cy, sx - cx), ex = cx + Math.cos(a0) * curlR, ey = cy + Math.sin(a0) * curlR;
+  const dx = ex - sx, dy = ey - sy, dl = Math.hypot(dx, dy), px = -dy / dl, py = dx / dl, amp = dl * lerp(0.08, 0.16, r()) * (r() < 0.5 ? 1 : -1);
+  const pts = [[sx, sy], [sx + dx * 0.3 + px * amp, sy + dy * 0.3 + py * amp], [sx + dx * 0.62 - px * amp * 0.7, sy + dy * 0.62 - py * amp * 0.7], [sx + dx * 0.9 + px * amp * 0.15, sy + dy * 0.9 + py * amp * 0.15], [ex, ey]];
+  for (let k = 1; k <= 26; k++) {
+    const u = k / 26, a = a0 + dirS * u * turns * TAU, rr = curlR * (1 - u * 0.8);
+    pts.push([cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]);
+  }
+  c.len = lerp(120, 160, r());
+  [c.t0, c.t1, c.mt0] = CRAWL_TIMING[i];
+  return resample(pts, 3, true);
+});
+
+function withWave(pts, amp, phase) {
+  if (amp < 0.05) return pts;
+  return pts.map((p, k) => {
+    const a = pts[Math.max(0, k - 1)], b = pts[Math.min(pts.length - 1, k + 1)];
+    const tx = b[0] - a[0], ty = b[1] - a[1], tl = Math.hypot(tx, ty) || 1;
+    const env = Math.sin((k / (pts.length - 1)) * Math.PI), o = Math.sin(k * 0.42 - phase) * amp * env;
+    return [p[0] - (ty / tl) * o, p[1] + (tx / tl) * o];
+  });
+}
+
+function drawCrawler(ctx, i, t, time, wpose) {
+  const c = CRAWLERS[i], P = CRAWL_PATHS[i], L = P.len;
+  const h = easeInOut(span(t, c.t0, c.t1)) * L;
+  const leftover = 1 - span(h, 0, c.len * 0.6);
+  if (leftover > 0) blob(ctx, c.start[0], c.start[1], c.r * (0.35 + 0.65 * leftover), { seed: 900 + i, stretch: 1.15, angle: Math.atan2(c.start[1] - IMPACT[1], c.start[0] - IMPACT[0]), tail: 0.3, jag: 0.12 });
+  if (h < 2) return;
+  const s0 = Math.max(0, h - c.len);
+  // traînée sèche laissée derrière le ver
+  const trail = 170 * (1 - span(t, c.t1 - 0.04, c.t1 + 0.06));
+  if (s0 > 4 && trail > 4) inkStroke(ctx, subPath(P, s0, Math.max(0, s0 - trail), 4), 3.2, { seed: 960 + i, startW: 1, taperIn: 0.01, endW: 0.2, dry: 1, dryLen: 0.9, breaks: 1, spurs: 0, specks: 2, nib: 0 });
+  const curled = span(h, L - c.len, L);
+  let body = withWave(subPath(P, s0, h, 3), 7 * (1 - curled), time * 17 + i);
+  const m = easeOutBack(span(t, c.mt0, c.mt0 + MORPH_DUR), 1.9);
+  if (m <= 0) {
+    if (curled >= 1) { // enroulé : il respire
+      const k = 1 + 0.07 * Math.sin(time * 15 + i * 2);
+      body = body.map(p => [c.curl[0] + (p[0] - c.curl[0]) * k, c.curl[1] + (p[1] - c.curl[1]) * k]);
+    }
+    inkStroke(ctx, body, c.r * 1.35, { seed: 950 + i, startW: 0.3, taperIn: 0.35, endW: 0.85, taperOut: 0.12, breaks: 0, wobble: 1, nib: 0, spurs: 1 });
+    return;
+  }
+  const A = resampleN(body, LIMB_K, false), Bt = limbTarget(wpose, c.limb);
+  const M = A.map((p, k) => [lerp(p[0], Bt[k][0], m), lerp(p[1], Bt[k][1], m)]);
+  const st = LIMB_STYLE[c.limb], mm = clamp(m);
+  inkStroke(ctx, M, lerp(c.r * 1.35, st.w, mm), Object.assign({ breaks: 0, spurs: 0, specks: 0, nib: 0.1 }, st, {
+    startW: lerp(0.3, st.startW, mm), taperIn: lerp(0.35, st.taperIn, mm), endW: lerp(0.85, st.endW, mm), taperOut: lerp(0.12, st.taperOut, mm),
+  }));
+  if (c.limb === 'head') drawHeadAndFeet(ctx, wpose, sstep(0.35, 1, m), 0);
+}
+
+function shotBirth(ctx, t, time) {
+  applyCam(ctx, Object.assign({ zoom: lerp(1, 1.32, easeInOut(t)), y: lerp(0, -4, t), rot: lerp(0, -0.014, easeInOut(t)) }, shake(0.7, 31)));
+  drawDay0(ctx, 99);
+  const ret = easeInOut(span(t, 0, 0.42));
+  if (ret < 0.97) drawSplash2(ctx, 1, ret);
+  // la flaque : le cœur de la tache s'aplatit puis s'épuise à mesure que le corps se dresse
+  const pr = span(t, 0.38, 0.85);
+  blob(ctx, IMPACT[0], IMPACT[1] + lerp(0, 6, pr), SPLAT.R * lerp(0.55, 0.22, pr), { seed: SPLAT.seed, jag: lerp(0.24, 0.2, pr), stretch: lerp(1.15, 3.3, sstep(0.3, 0.62, t)) });
+  if (t < 0.43) drawSplat(ctx, 1, ret);
+  const pose = figurePose({ tremble: lerp(0.5, 2.6, span(t, 0.72, 0.95)), lean: 0.035 * Math.sin(time * 8.5) * span(t, 0.7, 0.9) });
+  const wpose = poseToWorld(pose, IMPACT[0], IMPACT[1]);
+  const legs = Math.min(easeOutBack(span(t, CRAWLERS[0].mt0, CRAWLERS[0].mt0 + MORPH_DUR)), easeOutBack(span(t, CRAWLERS[1].mt0, CRAWLERS[1].mt0 + MORPH_DUR)));
+  drawHeadAndFeet(ctx, wpose, 0, sstep(0.6, 1, legs));
+  for (let i = 0; i < CRAWLERS.length; i++) drawCrawler(ctx, i, t, time, wpose);
+}
+
+/* ---------- plans 4-5 : le couloir d'étagères, perspective à un point de fuite central ----------
+   Monde 3D : X à droite, Y vers le bas (sol en Y = 0), Z vers le fond. Projection sur l'écran, puis caméra 2D. */
+const COR = {
+  F: 1100, E: 250, VPY: -40,               // focale, hauteur d'œil, hauteur écran du point de fuite
+  HW: 400, Z0: 160, BAY: 640, NBAY: 14,    // demi-largeur du couloir, travées
+  LEVEL: 190, WALLH: 7000, REC: 34, BOARD: 20,
+  SLITW: 64, SLITH: 3200, NEAR: 30,
+  FIGZ: 2200, FIGK: 170 / 300,             // position de la silhouette, échelle monde / local
+};
+COR.ZEND = COR.Z0 + COR.NBAY * COR.BAY;
+
+const proj = (X, Y, Z, cam) => { const k = COR.F / (Z - cam.z); return [(X - cam.x) * k, (Y - cam.y) * k + COR.VPY]; };
+// Plage de Y (monde) visible à la profondeur dz, avec une marge pour secousses et rotation.
+const visY = (dz, cam) => [cam.y + (-H / 2 - 170 - COR.VPY) * dz / COR.F, cam.y + (H / 2 + 170 - COR.VPY) * dz / COR.F];
+// Profondeur où un plan vertical X sort de l'écran.
+const zEdge = (X, cam) => cam.z + COR.F * Math.abs(X - cam.x) / (W / 2 + 140);
+const sid = (...k) => hash(...k) % 100000;
+
+function drawFarWall(ctx, cam, pr) {
+  const { HW, ZEND, SLITW } = COR, dz = ZEND - cam.z, top = Math.max(-COR.WALLH, visY(dz, cam)[0]), r = rand(1234);
+  for (let X = -HW - 14, i = 0; X <= HW + 14; X += 19, i++) {
+    const jx = (r() - 0.5) * 8, ts = 0.55 + (1 - Math.abs(X) / HW) * 0.13 + r() * 0.04, dry = r() < 0.3;
+    const bottom = Math.abs(X + jx) < SLITW / 2 + 5 ? -COR.SLITH - r() * 60 : 8;
+    inkStroke(ctx, [proj(X + jx, top, ZEND, cam), proj(X + jx + (r() - 0.5) * 6, bottom, ZEND, cam)], clamp(COR.F * 36 / dz, 1, 14),
+      { seed: 3000 + i, progress: pr(ts, 0.09), startW: 1, taperIn: 0.01, endW: 0.75, taperOut: 0.12, dry: dry ? 0.7 : 0, dryLen: 0.3, breaks: 0, wobble: 0.5, spurs: 0, specks: 0, nib: 0 });
+  }
+}
+
+function drawBay(ctx, cam, pr, k, s) {
+  const { F, HW, BAY, Z0, LEVEL, REC, BOARD, NEAR } = COR;
+  const Za = Z0 + k * BAY, Zb = Za + BAY, X = s * HW, Xb = s * (HW + REC);
+  const zMin = Math.max(cam.z + NEAR, zEdge(X, cam));          // devant : hors écran
+  if (Zb <= zMin) return;
+  const t0 = 0.04 + 0.5 * Math.pow(k / (COR.NBAY - 1), 0.85) + (s > 0 ? 0.015 : 0);
+  const dzB = Zb - cam.z, dzA = Math.max(Za, zMin) - cam.z;
+  const [vy0, vy1] = visY(dzB, cam), top = Math.max(-COR.WALLH, vy0);
+  const bwpx = Math.abs(proj(X, 0, Math.max(Za, zMin), cam)[0] - proj(X, 0, Zb, cam)[0]);
+  const deep = Za > 4900;
+  const lw = dz => clamp(F * 2.4 / dz, 0.7, 3.4), wob = dz => clamp(F * 1.1 / dz, 0.25, 1.3);
+
+  if (deep) { // au fond : la travée est peinte d'un seul coup de pinceau sombre
+    const zm = (Za + Zb) / 2, xm = proj(X, 0, zm, cam)[0];
+    inkStroke(ctx, [[xm, proj(X, top, zm, cam)[1]], [xm + s * 2, proj(X, 4, zm, cam)[1]]], bwpx * 1.35 + 2,
+      { seed: sid(s, k, 1), progress: pr(t0 + 0.04, 0.08), startW: 1, taperIn: 0.01, endW: 0.8, taperOut: 0.1, dry: 0.5, dryLen: 0.25, wobble: 0.4, breaks: 0, spurs: 0, specks: 0, nib: 0 });
+  }
+  // livres, rayon par rayon
+  const j0 = 0, j1 = Math.min(Math.floor(COR.WALLH / LEVEL) - 1, Math.floor(-top / LEVEL) + 1);
+  for (let j = j0; j <= j1; j++) {
+    const Yj = -j * LEVEL;
+    if (Yj - LEVEL > vy1 || Yj < vy0) continue;
+    if (!deep && bwpx > 14) {
+      const r = rand(s + 5, k, j, 77), pDark = lerp(0.14, 0.8, span(Za, 2400, 4900));
+      let z = Za + lerp(14, 30, r()), b = 0;
+      while (z < Zb - 30) {
+        const bw = lerp(16, 44, r()), h = LEVEL * lerp(0.5, 0.88, r()), kind = r(), ts = t0 + 0.05 + r() * 0.1 + j * 0.003, dirUp = r() < 0.6;
+        const z1 = Math.min(z + bw, Zb - 14);
+        b++;
+        if (z > zMin && kind > 0.05) {
+          const dz = z - cam.z, p = pr(ts, 0.035);
+          if (kind < 0.05 + pDark) {
+            const q = [proj(Xb, Yj - 2, z, cam), proj(Xb, Yj - h, z, cam), proj(Xb, Yj - h, z1, cam), proj(Xb, Yj - 2, z1, cam)];
+            if (p > 0) { // livre sombre : un aplat qui se remplit de bas en haut
+              const e = easeOutCubic(p);
+              q[1] = [lerp(q[0][0], q[1][0], e), lerp(q[0][1], q[1][1], e)]; q[2] = [lerp(q[3][0], q[2][0], e), lerp(q[3][1], q[2][1], e)];
+              inkFill(ctx, q, { seed: sid(s, k, j, b), rough: clamp(F * 1.4 / dz, 0.3, 1.6), step: clamp(F * 4 / dz, 1.5, 4), dry: kind > 0.05 + pDark * 0.7 ? 0.5 : 0, dryAngle: Math.PI / 2, drySize: Math.abs(q[3][0] - q[0][0]) * 2 + 6, dryZones: 1 });
+            }
+          } else {
+            const a = proj(Xb, Yj - 3, z, cam), c = proj(Xb, Yj - h, z, cam);
+            drawOn(ctx, { pts: dirUp ? [a, c] : [c, a], w: lw(dz), seed: sid(s, k, j, b), wobble: wob(dz), breaks: 0, spurs: 0, specks: 0, startW: 0.5, endW: 0.4, nib: 0.15 }, p);
+            if (r() < 0.75) drawOn(ctx, { pts: [c, proj(Xb, Yj - h + (r() - 0.5) * 8, z1, cam)], w: lw(dz) * 0.8, seed: sid(s, k, j, b, 2), wobble: wob(dz), breaks: 0, spurs: 0, specks: 0, nib: 0 }, pr(ts + 0.02, 0.03));
+          }
+        }
+        z = z1 + (r() < 0.08 ? lerp(10, 40, r()) : 0);
+      }
+    }
+    // planche : arête avant, du proche vers le lointain
+    const za = Math.max(Za, zMin), dza = za - cam.z;
+    drawOn(ctx, { pts: [proj(X, Yj, za, cam), proj(X, Yj + 1, Zb, cam)], w: clamp(F * BOARD * 0.42 / dza, 0.8, 22), w1: clamp(F * BOARD * 0.42 / dzB, 0.6, 22),
+      seed: sid(s, k, j, 999), wobble: wob(dza), breaks: r01(s, k, j) < 0.3 ? 1 : 0, startW: 0.7, endW: 0.5, taperOut: 0.15, spurs: 0, nib: 0 }, pr(t0 + 0.015 + j * 0.005, 0.07));
+  }
+  // montant : un grand trait vertical, de haut en bas
+  if (Za >= zMin - 10) {
+    const dz = Za - cam.z, xm = proj(s * (HW + REC * 0.5), 0, Za, cam)[0];
+    inkStroke(ctx, [[xm, proj(X, top, Za, cam)[1]], [xm + s * 1.5, proj(X, 6, Za, cam)[1]]], clamp(F * REC * 0.8 / dz, 1.2, 70),
+      { seed: sid(s, k, 5), progress: pr(t0, 0.06), startW: 1, taperIn: 0.01, endW: 0.75, taperOut: 0.12, wobble: wob(dz), rough: 0.15, breaks: 0, spurs: 1, specks: 0, nib: 0, dry: 0.35, dryLen: 0.2 });
+  }
+}
+const r01 = (...k) => h01(...k);
+
+function drawFloor(ctx, cam, pr) {
+  const { F, HW, BAY, Z0, NBAY } = COR;
+  // ombre du sol : hachures horizontales au pinceau, du premier plan vers le fond
+  const yh = proj(0, 0, COR.ZEND, cam)[1], yb = H / 2 + 60;
+  for (let y = yb, i = 0; y > yh + 2; i++) {
+    const u = (y - yh) / (yb - yh), ext = HW * (y - COR.VPY) / COR.E * 0.985, r = rand(6000 + i);
+    const gap = lerp(5.5, 9.5, u) * lerp(0.85, 1.15, r()), w = lerp(2.2, 4.2, u) * lerp(0.75, 1.2, r());
+    const yy = y + (r() - 0.5) * 2, flip = r() < 0.5, ts = 0.3 + (1 - u) * 0.26 + r() * 0.03;
+    const a = [-ext, yy + (r() - 0.5) * 3], b = [ext, yy + (r() - 0.5) * 3], m = [(r() - 0.5) * 80, yy + (r() - 0.5) * 3];
+    drawOn(ctx, { pts: flip ? [b, m, a] : [a, m, b], w, seed: 6100 + i, wobble: 0.8, breaks: Math.floor(r() * 3), dry: r() < 0.35 ? 0.6 : 0, dryLen: 0.25, startW: 0.6, endW: 0.4, taperOut: 0.1, spurs: 0, specks: 1, nib: 0 }, pr(ts, 0.07));
+    y -= gap;
+  }
+  for (let k = 0; k < NBAY; k++) {
+    const Za = Z0 + k * BAY, Zb = Za + BAY, t0 = 0.02 + 0.45 * Math.pow(k / (NBAY - 1), 0.9);
+    if (Zb < cam.z + 60) continue;
+    for (const [i, X] of [-310, -205, -95, 95, 210, 315].entries()) {
+      if (r01(k, i, 31) < 0.3) continue;   // lattes interrompues
+      const za = Math.max(Za, zEdge(X, cam), cam.z + 60), dz = za - cam.z;
+      if (za >= Zb) continue;
+      drawOn(ctx, { pts: [proj(X, 0, za, cam), proj(X + 4, 0, Zb - r01(k, i, 32) * 200, cam)], w: clamp(F * 2 / dz, 0.6, 2.4), seed: sid(k, i, 33), wobble: 0.6, breaks: 1, spurs: 0, specks: 0, nib: 0 }, pr(t0 + 0.03, 0.06));
+    }
+    if (Za > cam.z + 80 && k % 2 === 0) {
+      const dz = Za - cam.z, x0 = -HW + r01(k, 34) * 160, x1 = HW - r01(k, 35) * 160;
+      drawOn(ctx, { pts: [proj(x0, 0, Za, cam), proj(x1, 0, Za + 10, cam)], w: clamp(F * 1.8 / dz, 0.6, 2), seed: sid(k, 36), wobble: 0.5, breaks: 1, spurs: 0, specks: 0, nib: 0 }, pr(t0 + 0.05, 0.05));
+    }
+  }
+}
+
+function drawCorridor(ctx, cam, tD) {
+  const pr = (ts, dur) => clamp((tD - ts) / dur);
+  drawFarWall(ctx, cam, pr);
+  for (let k = COR.NBAY - 1; k >= 0; k--) { drawBay(ctx, cam, pr, k, -1); drawBay(ctx, cam, pr, k, 1); }
+  drawFloor(ctx, cam, pr);
+}
+
+function drawCorridorFigure(ctx, cam, figZ, pose, extra) {
+  const dz = figZ - cam.z, sc = COR.F * COR.FIGK / dz, [fx, fy] = proj(0, 0, figZ, cam);
+  ctx.save();
+  ctx.translate(fx, fy); ctx.scale(sc, sc);
+  blob(ctx, 0, 7, 30, { seed: 4100, stretch: 3.2, jag: 0.22 });
+  drawFigure(ctx, pose, extra);
+  ctx.restore();
+}
+
+// Plan 4 — coupe franche : plan large, le couloir se dessine de l'avant vers le fond.
+const CAM4 = t => lerp(0, 420, t);
+function shotCorridor(ctx, t, time) {
+  const cam = { x: 0, y: -COR.E, z: CAM4(t) };
+  applyCam(ctx, Object.assign({ rot: lerp(0.008, -0.004, t) }, shake(0.6, 41)));
+  drawCorridor(ctx, cam, t);
+  drawLightCone(ctx, cam, 0, true);
+  drawCorridorFigure(ctx, cam, COR.FIGZ, figurePose({ tremble: 1.4, lean: 0.02 * Math.sin(time * 3) }));
+}
+
+/* ---------- plan 5 : la fente s'ouvre en cône de lumière qui dévore les étagères ---------- */
+const CAM5 = t => CAM4(1) + 210 * t + 1350 * Math.pow(t, 3);   // la caméra accélère
+const FIGZ5 = t => COR.FIGZ + 300 * t;
+
+// Bord déchiqueté du cône (décalage en px, perpendiculaire au bord), à la distance rr de l'apex.
+function coneJag(side, rr, t) {
+  const B = S.boil;
+  return 26 * noise2(rr * 0.008 + side * 17.3, B * 0.37 + t * 2) + 11 * noise2(rr * 0.04 + side * 5.1, B * 0.9)
+    + 6 * Math.abs(noise2(rr * 0.13 + side * 3.3, B * 1.7)) * Math.sign(noise2(rr * 0.021, side + B * 0.2));
+}
+function coneEdge(A, alpha, side, rr, t) {
+  const a = Math.PI / 2 + side * alpha, nx = Math.cos(a + side * Math.PI / 2), ny = Math.sin(a + side * Math.PI / 2);
+  const j = coneJag(side, rr, t);
+  return [A[0] + Math.cos(a) * rr + nx * j, A[1] + Math.sin(a) * rr + ny * j, nx, ny];   // (nx, ny) : vers l'extérieur
+}
+
+const CONE_A0 = 0.11;   // demi-angle du chemin de lumière au sol avant l'ouverture
+function drawLightCone(ctx, cam, t, calm = false) {
+  const A = proj(0, -50, COR.ZEND, cam), alpha = Math.min(Math.PI + 0.2, CONE_A0 + 3.2 * Math.pow(t, 1.7)), RMAX = 2600;
+  const B = S.boil;
+  ctx.save();
+  ctx.globalCompositeOperation = 'destination-out';
+  ctx.fillStyle = '#000';
+  // 1) la fente s'élargit et se prolonge
+  const hw = COR.SLITW / 2 + 1300 * Math.pow(t, 2.2), top = -COR.SLITH - 6000 * t * t;
+  inkFill(ctx, [proj(-hw, top, COR.ZEND, cam), proj(hw, top, COR.ZEND, cam), proj(hw, 0, COR.ZEND, cam), proj(-hw, 0, COR.ZEND, cam)], { seed: 5101, rough: 2 + 6 * t });
+  // 2) le cône, de la base de la fente vers nous
+  if (alpha > 0.03) {
+    ctx.beginPath();
+    ctx.moveTo(A[0], A[1]);
+    for (let rr = 6; rr <= RMAX; rr += 10) { const e = coneEdge(A, alpha, -1, rr, t); ctx.lineTo(e[0], e[1]); }
+    const a0 = Math.PI / 2 - alpha, a1 = Math.PI / 2 + alpha;
+    for (let k = 1; k < 24; k++) { const a = lerp(a0, a1, k / 24); ctx.lineTo(A[0] + Math.cos(a) * RMAX, A[1] + Math.sin(a) * RMAX); }
+    for (let rr = RMAX; rr >= 6; rr -= 10) { const e = coneEdge(A, alpha, 1, rr, t); ctx.lineTo(e[0], e[1]); }
+    ctx.closePath();
+    ctx.fill();
+    if (calm) { ctx.restore(); return; }
+    // 3) rais de lumière qui fusent au-delà du bord
+    const r = rand(5150);
+    for (let k = 0; k < 8; k++) {
+      const side = k % 2 ? 1 : -1, da = lerp(0.03, 0.35, r()) * (0.4 + t), w = lerp(0.008, 0.022, r()), len = lerp(400, 2200, r()) * (0.3 + t), flick = h01(k, B, 5152) < 0.8;
+      if (!flick) continue;
+      const a = Math.PI / 2 + side * (alpha + da), ca = Math.cos(a), sa = Math.sin(a);
+      // rai aux bords déchiquetés, qui s'effile au bout
+      const edge = (rr, sgn) => {
+        const hw = (rr * w * (1 + 0.6 * noise2(rr * 0.006 + k * 9.1, B * 0.4 + sgn)) + 3 * noise2(rr * 0.05 + k * 3.3, B * 1.2 + sgn * 5)) * (1 - Math.pow(rr / len, 3));
+        return [A[0] + ca * rr - sa * hw * sgn, A[1] + sa * rr + ca * hw * sgn];
+      };
+      ctx.beginPath();
+      ctx.moveTo(A[0], A[1]);
+      for (let rr = 12; rr <= len; rr += 12) ctx.lineTo(...edge(rr, 1));
+      for (let rr = len; rr >= 12; rr -= 12) ctx.lineTo(...edge(rr, -1));
+      ctx.closePath(); ctx.fill();
+    }
+    // 4) l'encre se désagrège le long du bord : trous mangés dans les traits…
+    const rp = rand(5160);
+    for (let k = 0; k < 260; k++) {
+      const side = k % 2 ? 1 : -1, rr = lerp(30, 1900, Math.pow(rp(), 0.9)), d = lerp(0, 60 + rr * 0.04, Math.pow(rp(), 1.6)), rad = lerp(1.5, 6 + rr * 0.006, rp() * rp());
+      const e = coneEdge(A, alpha, side, rr, t);
+      blob(ctx, e[0] + e[2] * d, e[1] + e[3] * d, rad, { seed: 5200 + k, jag: 0.4 });
+    }
+  }
+  ctx.restore();
+  // 5) … et part en éclaboussures, poussée vers l'extérieur
+  if (alpha > 0.03) {
+    const rp = rand(5170);
+    for (let k = 0; k < 150; k++) {
+      const side = k % 2 ? 1 : -1, rr = lerp(40, 1800, Math.pow(rp(), 0.85)), d0 = lerp(-25, 50, rp()), drift = lerp(20, 140, rp()), rad = lerp(0.7, 3.2 + rr * 0.004, Math.pow(rp(), 2.2)), st = lerp(1.2, 3.2, rp());
+      const life = (t * 3 + rp()) % 1, d = d0 + drift * life;
+      const e = coneEdge(A, alpha, side, rr, t);
+      const ang = Math.atan2(e[3], e[2]);
+      blob(ctx, e[0] + e[2] * d, e[1] + e[3] * d, rad * (1 - life * 0.6), { seed: 5300 + k, stretch: st, angle: ang, tail: 0.5, jag: 0.2 });
+    }
+  }
+}
+
+function shotLight(ctx, t, time) {
+  S.jitter = 1 + 2.2 * t * t;                                       // le tremblement s'intensifie
+  const cam = { x: 0, y: -COR.E, z: CAM5(t) };
+  applyCam(ctx, Object.assign({ rot: -0.004 + 0.012 * t * t, zoom: 1 + 0.06 * t * t }, shake(0.6 + 15 * Math.pow(t, 2.2), 51, 0.0016)));
+  drawCorridor(ctx, cam, 9);
+  drawLightCone(ctx, cam, t);
+  const dis = span(t, 0.8, 1);                                      // à la fin, la silhouette se défait aussi
+  const pose = figurePose({ walk: t * 2.3, walkAmt: easeOutCubic(span(t, 0, 0.15)), tremble: 1.4 + 3 * t });
+  drawCorridorFigure(ctx, cam, FIGZ5(t), pose, dis > 0 ? { breaks: Math.round(1 + 5 * dis), dry: dis, dryLen: 0.6 } : undefined);
+  if (dis > 0) {
+    const dz = FIGZ5(t) - cam.z, sc = COR.F * COR.FIGK / dz, [fx, fy] = proj(0, 0, FIGZ5(t), cam), r = rand(5400);
+    ctx.save(); ctx.globalCompositeOperation = 'destination-out';
+    const re = rand(5500, S.boil);
+    for (let k = 0; k < 70 * dis; k++) blob(ctx, fx + (re() - 0.5) * 120 * sc, fy - re() * 300 * sc, lerp(2, 9, re()) * sc * (0.5 + dis), { seed: 5510 + k, jag: 0.35, stretch: 1.6, angle: re() * TAU });
+    ctx.restore();
+    for (let k = 0; k < 40; k++) {
+      const a = r() * TAU, d = lerp(20, 260, r()) * dis * sc + 140 * sc * r(), rad = lerp(1, 6, r() * r()) * sc * 1.8;
+      blob(ctx, fx + Math.cos(a) * d, fy - 160 * sc + Math.sin(a) * d * 1.3, rad, { seed: 5450 + k, stretch: 1.8, angle: a, jag: 0.2 });
+    }
+  }
+}
+
+/* ---------- plan 6 : silence blanc, « day 1 », un dernier éclat ---------- */
+const DAY1 = { size: 150, y: 44, writeFrom: 0.12, writeTo: 0.6, burstAt: 0.74 };
+function shotDay1(ctx, t, time) {
+  const k = time - 9.0;
+  const bump = k > DAY1.burstAt ? 7 * Math.exp(-(k - DAY1.burstAt) * 12) : 0;
+  applyCam(ctx, shake(bump, 61, 0.0008));
+  // quelques poussières d'encre qui finissent de se dissoudre
+  const fade = 1 - span(k, 0, 0.3), r = rand(6600);
+  for (let i = 0; i < 26 && fade > 0; i++) {
+    const a = r() * TAU, d = lerp(120, 900, r()) + k * 160, rad = lerp(0.6, 3.2, r() * r()) * fade;
+    dot(ctx, Math.cos(a) * d * 1.6, Math.sin(a) * d * 0.8, rad);
+  }
+  handText(ctx, 'day 1', 0, DAY1.y, DAY1.size, span(k, DAY1.writeFrom, DAY1.writeTo), { seed: 9, align: 'center' });
+  ctx.save(); ctx.font = `700 ${DAY1.size}px Caveat, cursive`; const tw = ctx.measureText('day 1').width; ctx.restore();
+  splatter(ctx, tw / 2 + 38, DAY1.y - 6, 12, { seed: 6700, progress: span(k, DAY1.burstAt, DAY1.burstAt + 0.2), dir: 0.3, bias: 0.25, filaments: 9, droplets: 16, mist: 22 });
+}
+
+const SHOTS = [
+  { start: 0.0, end: 1.5, draw: shotPage },
+  { start: 1.5, end: 2.0, draw: shotImpact },
+  { start: 2.0, end: 4.5, draw: shotBirth },
+  { start: 4.5, end: 7.5, draw: shotCorridor },
+  { start: 7.5, end: 9.0, draw: shotLight },
+  { start: 9.0, end: 10.0, draw: shotDay1 },
+];
+
+/* =====================================================================
+   RENDU
+   ===================================================================== */
+function beginInk() {
+  ink.setTransform(1, 0, 0, 1, 0, 0);
+  ink.globalCompositeOperation = 'source-over';
+  ink.globalAlpha = 1;
+  ink.clearRect(0, 0, W, H);
+  ink.fillStyle = INK; ink.strokeStyle = INK;
+  ink.lineCap = 'round'; ink.lineJoin = 'round';
+}
+
+function renderFrame(n) {
+  n = Math.max(0, Math.min(FRAMES - 1, Math.floor(n)));
+  S.frame = n; S.boil = Math.floor(n / 3); S.jitter = 1;
+  const time = n / FPS;
+  let shot = SHOTS[SHOTS.length - 1];
+  for (const s of SHOTS) if (time >= s.start && time < s.end) { shot = s; break; }
+  beginInk();
+  let res = {};
+  if (shot) res = shot.draw(ink, clamp((time - shot.start) / (shot.end - shot.start)), time) || {};
+  composite(!!res.invert);
+}
+
+// Page de test du moteur : traits, pinceau sec, drawOn, aplats, taches, texte.
+function renderTestSheet(n = 0) {
+  S.frame = n; S.boil = Math.floor(n / 3); S.jitter = 1;
+  beginInk();
+  const c = ink;
+  applyCam(c, { x: W / 2, y: H / 2 });
+  [3, 6, 12, 24].forEach((w, i) => inkStroke(c, [[80, 90 + i * 55], [560, 80 + i * 55 + (i % 2 ? 10 : -6)]], w, { seed: 10 + i }));
+  inkStroke(c, [[640, 260], [700, 90], [800, 230], [900, 80], [1000, 250]], 14, { seed: 31 });
+  inkStroke(c, [[1060, 250], [1180, 80], [1320, 160], [1460, 70]], 26, { seed: 32, dry: 1, dryLen: 0.6 });
+  inkStroke(c, [[1520, 90], [1860, 110], [1840, 260]], 9, { seed: 33, breaks: 3, blot: true });
+  [0.25, 0.5, 0.75, 1].forEach((p, i) => drawOn(c, { pts: [[100 + i * 230, 470], [180 + i * 230, 330], [300 + i * 230, 420]], w: 16, seed: 40 + i }, p));
+  inkFill(c, [[1010, 330], [1330, 320], [1350, 520], [990, 530]], { seed: 50, dry: 1, dryAngle: 0.1 });
+  inkFill(c, [[1420, 340], [1620, 300], [1860, 420], [1700, 560], [1460, 520]], { seed: 51, dry: 0.6, rough: 5 });
+  splatter(c, 180, 760, 14, { seed: 60 });
+  splatter(c, 480, 790, 32, { seed: 61, dir: Math.PI / 2, bias: 0.4 });
+  splatter(c, 900, 800, 66, { seed: 62 });
+  handText(c, 'day 0', 1250, 720, 90, 1, { seed: 70 });
+  handText(c, 'Naissance', 1250, 880, 110, 0.62, { seed: 71 });
+  handText(c, 'day 1', 1700, 720, 90, 1, { seed: 72, weight: 500 });
+  composite(n % 2 === 1 && n > 100);
+}
+
+/* =====================================================================
+   APERÇU
+   ===================================================================== */
+const params = new URLSearchParams(location.search);
+const ready = (async () => {
+  try { await Promise.all([document.fonts.load('700 80px "Caveat"'), document.fonts.load('500 80px "Caveat"')]); } catch (e) { /* signalé plus bas */ }
+  await document.fonts.ready;
+  buildTextures();
+  return document.fonts.check('700 80px "Caveat"');
+})();
+
+function initPreview() {
+  const $ = id => document.getElementById(id);
+  const play = $('play'), seek = $('seek'), info = $('info'), icon = $('playIcon');
+  const PLAY = 'M7 4v16l13-8z', PAUSE = 'M6 4h4v16H6zM14 4h4v16h-4z';
+  let playing = false, frame = -1, t0 = 0, base = 0;
+  const show = n => {
+    frame = n; renderFrame(n);
+    seek.value = n;
+    info.textContent = `image ${String(n).padStart(3, '0')} / ${FRAMES - 1} · ${(n / FPS).toFixed(2)} s`;
+  };
+  const setPlaying = p => { playing = p; icon.setAttribute('d', p ? PAUSE : PLAY); t0 = performance.now(); base = Math.max(0, frame); };
+  play.addEventListener('click', () => setPlaying(!playing));
+  seek.addEventListener('input', () => { setPlaying(false); show(+seek.value); });
+  addEventListener('keydown', e => {
+    if (e.target === seek && e.key.startsWith('Arrow')) return;
+    if (e.code === 'Space') { e.preventDefault(); setPlaying(!playing); }
+    else if (e.key === 'ArrowRight') { setPlaying(false); show((frame + 1) % FRAMES); }
+    else if (e.key === 'ArrowLeft') { setPlaying(false); show((frame + FRAMES - 1) % FRAMES); }
+    else if (e.key === 'Home') { setPlaying(false); show(0); }
+  });
+  const loop = now => {
+    if (playing) {
+      const n = (base + Math.floor(((now - t0) / 1000) * FPS)) % FRAMES;
+      if (n !== frame) show(n);
+    }
+    requestAnimationFrame(loop);
+  };
+  show(clamp(+(params.get('frame') || 0), 0, FRAMES - 1) | 0);
+  setPlaying(!params.has('frame'));
+  requestAnimationFrame(loop);
+}
+
+const rendering = params.has('render');
+if (rendering) document.body.classList.add('render');
+window.NAISSANCE = {
+  W, H, FPS, FRAMES, ready, renderFrame, renderTestSheet,
+  frameDataURL(n) { renderFrame(n); return view.toDataURL('image/png'); },
+  testDataURL(n) { renderTestSheet(n); return view.toDataURL('image/png'); },
+};
+ready.then(() => {
+  if (params.has('test')) { if (!rendering) renderTestSheet(+(params.get('test') || 0)); }
+  else if (!rendering) initPreview();
+});
+})();
+</script>
+</body>
+</html>
